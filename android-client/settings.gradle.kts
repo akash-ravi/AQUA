@@ -22,5 +22,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "PhoneUse"
+rootProject.name = "jarvis"
 include(":app")
+ 

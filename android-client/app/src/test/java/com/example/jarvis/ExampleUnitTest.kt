@@ -1,4 +1,4 @@
-package com.example.phoneuse
+package com.example.jarvis
 
 import org.junit.Test
 

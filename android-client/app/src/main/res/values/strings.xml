@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">PhoneUse</string>
-    <string name="screen_capture_service_description">Captures the screen every 2 seconds, 10 times, and logs it.</string>
+    <string name="app_name">jarvis</string>
+    <string name="accessibility_service_description">Lets Jarvis read and capture the screen.</string>
 </resources>
