@@ -82,6 +82,9 @@ class AI:
     async def phone_task_likelihood(self, goal: str) -> float:
         return await self.jev.phone_task_likelihood(goal) if self.jev else 1.0
 
+    async def says_done(self, question: str, reply: str) -> bool | None:
+        return await self.jev.says_done(question, reply) if self.jev else None
+
     async def decide(self, system: str, message: str, *, image: bytes | None = None,
                      retry_note: str | None = None) -> Decision:
         blocks: list[dict] = []

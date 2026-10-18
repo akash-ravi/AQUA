@@ -407,8 +407,9 @@ class Brain:
 
     def note_attempt(self, step: Step, before) -> None:
         previous = self.attempts.get(step.action_key, Attempt())
-        progressed = (step.status == "ok" and before.signature != self.view.signature
-                      and screens.overlap_ratio(before, self.view) < 0.9)
+        # A changed label counts: calculator keys and quantity buttons repeat on purpose.
+        progressed = step.status == "ok" and screens.describe_change(before, self.view).startswith(
+            ("new screen", "same screen; changed"))
         count = 1 if previous.progressed and not previous.duplicate_sensitive else previous.count + 1
         self.attempts[step.action_key] = Attempt(count, step.status, step.duplicate_sensitive, progressed)
 
@@ -717,6 +718,8 @@ class Brain:
             self.task.corrections.append(answer)
             self.warnings.append(f"You were stuck ({stuck.reason}). Follow the user's advice: {answer}")
         self.screen_history.clear()
+        # The user has weighed in, so blocked retries get a fresh count; uncertain money/send effects keep theirs.
+        self.attempts = {key: attempt for key, attempt in self.attempts.items() if attempt.duplicate_sensitive}
         self.step_limit = max(self.step_limit, len(self.task.steps) + HELP_EXTRA_STEPS)
         self.model_call_limit = max(self.model_call_limit, self.task.model_calls + HELP_EXTRA_MODEL_CALLS)
         await self.read_screen()
@@ -750,11 +753,16 @@ class Brain:
             self.warnings.append(problem)
             self.warnings.append("Completion is not established. Inspect the fresh observation/image and check relevant result evidence without repeating the action. Try finish again or ask for help.")
             return
-        answer = await self.ask("question", f'I checked the screen but could not verify this task: {self.task.goal}. Did it finish?',
-                                ["Yes", "No", "Not sure"], QUESTION_EXPIRES)
+        question = f'I checked the screen but could not verify this task: {self.task.goal}. Did it finish?'
+        answer = await self.ask("question", question, ["Yes", "No", "Not sure"], QUESTION_EXPIRES)
         if answer is None:
             return
-        confirmed = yes_no(answer.text)
+        started = time.monotonic()
+        confirmed = await self.ai.says_done(question, answer.text)
+        self.timing.ai += time.monotonic() - started
+        if confirmed is None:
+            confirmed = yes_no(answer.text)
+        self.notebook.write("completion_check", reply=answer.text, done=confirmed)
         if confirmed is True:
             self.task.completion_evidence = "user"
             raise TaskEnded("completed", "User confirmed: " + args["summary"])

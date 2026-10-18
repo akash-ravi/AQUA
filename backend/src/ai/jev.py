@@ -19,6 +19,16 @@ APPROVAL_QUESTION = {
         "change": "Asks for something different, adds a condition, or is unclear",
     },
 }
+COMPLETION_QUESTION = {
+    "type": "choice",
+    "instructions": "The user was asked whether a phone task finished, and answered by voice "
+                    "(the reply may be misheard). What does the reply say about that task?",
+    "criteria": {
+        "done": "Says the task finished, even if they add a comment or a complaint",
+        "not_done": "Says it did not finish or still needs doing",
+        "unsure": "Doesn't know, or the reply is unclear",
+    },
+}
 PHONE_TASK_QUESTION = {
     "type": "noul",
     "instructions": "Is this a request to do something on a phone (open an app, message, call, search, buy, check)?",
@@ -40,6 +50,10 @@ class Jev:
         if not answer or answer.get("choice") != "approve":
             return False
         return (answer.get("probabilities") or {}).get("approve", 0) >= APPROVE_AT
+
+    async def says_done(self, question: str, reply: str) -> bool | None:
+        answer = await self._ask(f"Question: {question}\nReply: {reply}", "completion", COMPLETION_QUESTION)
+        return {"done": True, "not_done": False}.get(answer.get("choice")) if answer else None
 
     async def phone_task_likelihood(self, goal: str) -> float:
         answer = await self._ask(goal, "phone_task", PHONE_TASK_QUESTION)
