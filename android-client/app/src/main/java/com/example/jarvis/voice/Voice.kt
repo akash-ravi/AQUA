@@ -37,9 +37,6 @@ class Voice(
     /** With [listenForReply], the mic stays open during playback when AEC is available. */
     fun speak(text: String, listenForReply: Boolean = false) = turn.speak(text, listenForReply)
 
-    /** Status chatter: skipped while something is already being said, so updates never pile up. */
-    fun speakIfIdle(text: String) = turn.speakIfIdle(text)
-
     fun cancel() = turn.cancel()
 
     fun close() {

@@ -86,7 +86,6 @@ class PhoneUseService : AccessibilityService() {
                         voice?.speak(it.question.orEmpty(), listenForReply = true)
                     }
                 }
-                if (it.mode == OverlayMode.PROCESSING) it.status?.let { status -> voice?.speakIfIdle(status) }
                 if (it.mode != OverlayMode.IDLE) notification.show(when (it.mode) {
                     OverlayMode.PAUSED -> "Jarvis is paused"
                     OverlayMode.PAUSING -> "Jarvis is pausing"

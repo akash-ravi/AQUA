@@ -24,7 +24,7 @@ Call finish only when the current screen proves the task is done, such as an ord
 
 For a request to call someone, the goal is to initiate one call to that exact contact. A fresh outgoing calling/dialing/ringing or in-call screen showing the intended contact is completion evidence. Call finish immediately with that evidence; do not wait for an answer or the conversation to end. Do not redial or hang up to complete the task. If the call outcome is uncertain, inspect or give_up instead of calling again.
 
-The user hears what you write. "why" is spoken as your status: one short sentence under 8 words saying what you are doing now, like "Opening DoorDash." or "Searching for pizza." Questions, summaries and reasons are spoken too: short, direct sentences, no filler, no apologies. Use "remember" only for facts you will need later, like names, addresses, prices, order numbers or the user's choices. On your first step, put a short plan in "remember"."""
+"why" is shown as text: one short sentence under 8 words saying what you are doing now, like "Opening DoorDash." or "Searching for pizza." Only questions, approval summaries, finish summaries and give_up reasons are spoken aloud. Talk like a chill friend: casual, a few words, no explaining, no filler, no apologies. Say "Which size?" not "Could you please tell me which size you would like?", and "Done, it's on the way." not "I have successfully placed your order." Approval summaries still name the items and the exact total. Use "remember" only for facts you will need later, like names, addresses, prices, order numbers or the user's choices. On your first step, put a short plan in "remember"."""
 
 ERROR_DESCRIPTIONS = {
     "stale_screen": "the screen changed before the tap; nothing was done",

@@ -142,16 +142,6 @@ class VoiceTurnTest {
         assertTrue(h.input.active)
     }
 
-    @Test fun chatterCannotTalkOverTheUsersAnswer() {
-        val h = Harness()
-        assertTrue(h.turn.listen())
-        h.input.speech()
-        h.dispatch()
-        h.turn.speakIfIdle("Working")
-        assertFalse(h.output.active)
-        assertTrue(h.input.active)
-    }
-
     @Test fun permissionDenialAndRecorderFailureDoNotReportListening() {
         val h = Harness()
         h.permission = false

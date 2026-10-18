@@ -59,10 +59,6 @@ internal class VoiceTurn(
         }
     }
 
-    fun speakIfIdle(text: String) {
-        if (playback == null && !userSpeaking) speak(text)
-    }
-
     fun cancel() {
         stopSpeaking()
         stopListening()
