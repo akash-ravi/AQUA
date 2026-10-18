@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 560" width="1280" height="560" role="img" aria-label="Today, ordering a pizza takes twelve manual steps across screens. With Jarvis it takes one sentence.">
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFB77A"/>
+      <stop offset="0.5" stop-color="#FF6B35"/>
+      <stop offset="1" stop-color="#FF3B4E"/>
+    </linearGradient>
+    <radialGradient id="orbCore" cx="0.42" cy="0.38" r="0.7">
+      <stop offset="0" stop-color="#FFF3EC"/>
+      <stop offset="0.3" stop-color="#FFB77A"/>
+      <stop offset="0.7" stop-color="#FF6B35"/>
+      <stop offset="1" stop-color="#FF3B4E"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FF6B35" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#FF6B35" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="blur10" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="10"/></filter>
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+      .step { opacity: .22; animation: lit 9s ease-out infinite; }
+      .tap { opacity: 0; transform-box: fill-box; transform-origin: center; animation: tap 9s ease-out infinite; }
+      @keyframes lit { 0% { opacity: .22; } 4% { opacity: 1; } 88% { opacity: 1; } 96%,100% { opacity: .22; } }
+      @keyframes tap { 0% { opacity: 0; transform: scale(.4); } 2% { opacity: .9; } 7% { opacity: 0; transform: scale(1.8); } 100% { opacity: 0; } }
+      .bubble { opacity: 0; animation: show 9s ease-out infinite; }
+      .think { opacity: 0; animation: think 9s ease-in-out infinite; }
+      .done { opacity: 0; animation: done 9s ease-out infinite; }
+      .check { stroke-dasharray: 60; stroke-dashoffset: 60; animation: draw 9s ease-out infinite; }
+      .orb { transform-box: fill-box; transform-origin: center; animation: orb 1.6s ease-in-out infinite; }
+      @keyframes show { 0%,8% { opacity: 0; transform: translateY(10px); } 14%,92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+      @keyframes think { 0%,16% { opacity: 0; } 22%,92% { opacity: 1; } 100% { opacity: 0; } }
+      @keyframes done { 0%,79% { opacity: 0; transform: translateY(10px); } 84%,95% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+      @keyframes draw { 0%,83% { stroke-dashoffset: 60; } 89%,95% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 60; } }
+      @keyframes orb { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+    </style>
+  </defs>
+
+  <rect width="1280" height="560" rx="28" fill="#100C0B"/>
+
+  <!-- LEFT: today -->
+  <g class="sans">
+    <text x="64" y="70" font-size="14" font-weight="700" letter-spacing="2" fill="#CCADA0">TODAY</text>
+    <text x="64" y="104" font-size="30" font-weight="700" fill="#FFF3EC">You do every step yourself</text>
+  </g>
+  <rect x="64" y="128" width="540" height="368" rx="22" fill="#211714" stroke="#614036"/>
+  <g class="sans" font-size="17" fill="#FFF3EC">
+    <g class="step" style="animation-delay:0s"><circle cx="100" cy="166" r="13" fill="#30211D" stroke="#614036"/><text x="100" y="171.5" text-anchor="middle" font-size="12" fill="#CCADA0">1</text><text x="126" y="172">Unlock, find DoorDash</text></g>
+    <g class="step" style="animation-delay:.6s"><circle cx="100" cy="210" r="13" fill="#30211D" stroke="#614036"/><text x="100" y="215.5" text-anchor="middle" font-size="12" fill="#CCADA0">2</text><text x="126" y="216">Tap search</text></g>
+    <g class="step" style="animation-delay:1.2s"><circle cx="100" cy="254" r="13" fill="#30211D" stroke="#614036"/><text x="100" y="259.5" text-anchor="middle" font-size="12" fill="#CCADA0">3</text><text x="126" y="260">Type "pizza"</text></g>
+    <g class="step" style="animation-delay:1.8s"><circle cx="100" cy="298" r="13" fill="#30211D" stroke="#614036"/><text x="100" y="303.5" text-anchor="middle" font-size="12" fill="#CCADA0">4</text><text x="126" y="304">Scroll the results</text></g>
+    <g class="step" style="animation-delay:2.4s"><circle cx="100" cy="342" r="13" fill="#30211D" stroke="#614036"/><text x="100" y="347.5" text-anchor="middle" font-size="12" fill="#CCADA0">5</text><text x="126" y="348">Pick a restaurant</text></g>
+    <g class="step" style="animation-delay:3s"><circle cx="100" cy="386" r="13" fill="#30211D" stroke="#614036"/><text x="100" y="391.5" text-anchor="middle" font-size="12" fill="#CCADA0">6</text><text x="126" y="392">Find the pepperoni</text></g>
+    <g class="step" style="animation-delay:3.6s"><circle cx="350" cy="166" r="13" fill="#30211D" stroke="#614036"/><text x="350" y="171.5" text-anchor="middle" font-size="12" fill="#CCADA0">7</text><text x="376" y="172">Choose Large</text></g>
+    <g class="step" style="animation-delay:4.2s"><circle cx="350" cy="210" r="13" fill="#30211D" stroke="#614036"/><text x="350" y="215.5" text-anchor="middle" font-size="12" fill="#CCADA0">8</text><text x="376" y="216">Add to cart</text></g>
+    <g class="step" style="animation-delay:4.8s"><circle cx="350" cy="254" r="13" fill="#30211D" stroke="#614036"/><text x="350" y="259.5" text-anchor="middle" font-size="12" fill="#CCADA0">9</text><text x="376" y="260">Close the upsell popup</text></g>
+    <g class="step" style="animation-delay:5.4s"><circle cx="350" cy="298" r="13" fill="#30211D" stroke="#614036"/><text x="350" y="303.5" text-anchor="middle" font-size="12" fill="#CCADA0">10</text><text x="376" y="304">Open the cart</text></g>
+    <g class="step" style="animation-delay:6s"><circle cx="350" cy="342" r="13" fill="#30211D" stroke="#614036"/><text x="350" y="347.5" text-anchor="middle" font-size="12" fill="#CCADA0">11</text><text x="376" y="348">Check out</text></g>
+    <g class="step" style="animation-delay:6.6s"><circle cx="350" cy="386" r="13" fill="#30211D" stroke="#614036"/><text x="350" y="391.5" text-anchor="middle" font-size="12" fill="#CCADA0">12</text><text x="376" y="392">Place the order</text></g>
+  </g>
+  <!-- finger taps -->
+  <g fill="none" stroke="#FF6B35" stroke-width="2.5">
+    <circle class="tap" cx="100" cy="166" r="16" style="animation-delay:0s"/>
+    <circle class="tap" cx="100" cy="210" r="16" style="animation-delay:.6s"/>
+    <circle class="tap" cx="100" cy="254" r="16" style="animation-delay:1.2s"/>
+    <circle class="tap" cx="100" cy="298" r="16" style="animation-delay:1.8s"/>
+    <circle class="tap" cx="100" cy="342" r="16" style="animation-delay:2.4s"/>
+    <circle class="tap" cx="100" cy="386" r="16" style="animation-delay:3s"/>
+    <circle class="tap" cx="350" cy="166" r="16" style="animation-delay:3.6s"/>
+    <circle class="tap" cx="350" cy="210" r="16" style="animation-delay:4.2s"/>
+    <circle class="tap" cx="350" cy="254" r="16" style="animation-delay:4.8s"/>
+    <circle class="tap" cx="350" cy="298" r="16" style="animation-delay:5.4s"/>
+    <circle class="tap" cx="350" cy="342" r="16" style="animation-delay:6s"/>
+    <circle class="tap" cx="350" cy="386" r="16" style="animation-delay:6.6s"/>
+  </g>
+  <g class="sans">
+    <line x1="92" y1="428" x2="576" y2="428" stroke="#614036"/>
+    <text x="92" y="464" font-size="16" fill="#CCADA0">Eyes on the screen and both hands busy, the whole time.</text>
+  </g>
+
+  <!-- divider -->
+  <line x1="640" y1="150" x2="640" y2="470" stroke="#614036" stroke-dasharray="4 8"/>
+  <circle cx="640" cy="312" r="22" fill="#100C0B" stroke="#614036"/>
+  <text x="640" y="318" class="sans" font-size="14" font-weight="700" fill="#CCADA0" text-anchor="middle">VS</text>
+
+  <!-- RIGHT: with Jarvis -->
+  <g class="sans">
+    <text x="680" y="70" font-size="14" font-weight="700" letter-spacing="2" fill="#FF6B35">WITH JARVIS</text>
+    <text x="680" y="104" font-size="30" font-weight="700" fill="#FFF3EC">You say one sentence</text>
+  </g>
+  <rect x="680" y="128" width="536" height="368" rx="22" fill="#211714" stroke="#614036"/>
+
+  <g class="bubble">
+    <rect x="712" y="156" width="400" height="58" rx="20" fill="#30211D" stroke="#614036"/>
+    <path d="M744 213 l-6 18 l26 -18 z" fill="#30211D"/>
+    <text x="736" y="192" class="sans" font-size="19" fill="#FFF3EC">"Order a large pepperoni from DoorDash"</text>
+  </g>
+
+  <g class="think">
+    <circle cx="790" cy="300" r="60" fill="url(#halo)"/>
+    <g class="orb">
+      <circle cx="790" cy="300" r="30" fill="url(#orbCore)"/>
+      <ellipse cx="782" cy="292" rx="14" ry="8" fill="#FFF3EC" opacity="0.5" filter="url(#blur10)"/>
+    </g>
+    <g class="mono" font-size="15" fill="#CCADA0">
+      <text x="842" y="276">Opening DoorDash.</text>
+      <text x="842" y="300">Searching for pizza.</text>
+      <text x="842" y="324">Adding Large Pepperoni.</text>
+    </g>
+  </g>
+
+  <g class="done">
+    <rect x="712" y="372" width="472" height="96" rx="18" fill="#100C0B" stroke="#FF6B35" stroke-opacity="0.6"/>
+    <circle cx="756" cy="420" r="22" fill="#FF6B35" fill-opacity="0.15" stroke="#FF6B35"/>
+    <text x="796" y="412" class="sans" font-size="19" font-weight="600" fill="#FFF3EC">Order placed, after you said Yes.</text>
+    <text x="796" y="440" class="sans" font-size="15" fill="#CCADA0">Proof read off the screen: "Order confirmed"</text>
+  </g>
+  <path d="M745 420 l8 8 l15 -16" fill="none" stroke="#FFB77A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" class="check"/>
+
+  <text x="712" y="534" class="sans" font-size="16" fill="#CCADA0"><tspan fill="#FFB77A" font-weight="600">Hands free.</tspan> Eyes free. Works in apps that never built an integration.</text>
+  <text x="92" y="534" class="sans" font-size="13" fill="#614036">Illustrative flow</text>
+</svg>

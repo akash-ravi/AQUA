@@ -1,72 +1,416 @@
-# Personal Android Assistant — Concept Overview
+<div align="center">
 
-## The idea
+<img src="docs/readme/hero.svg" alt="JARVIS: say what you want, and it taps through your Android apps for you" width="100%"/>
 
-Build a personal assistant that can understand a goal and carry out tasks across the apps on your Android phone. You describe what you want to accomplish, and the assistant figures out the steps, interacts with the phone, checks the result, and reports what happened.
+<br/>
 
-The long-term ambition is broad control across the phone, including unfamiliar apps. Actual coverage will depend on what Android and each application expose or allow.
+<a href="#-the-problem"><img src="https://img.shields.io/badge/Android-11%2B-FF6B35?style=for-the-badge&logo=android&logoColor=white" alt="Android 11+"/></a>
+<a href="#-how-it-works"><img src="https://img.shields.io/badge/Claude-Opus%205.5-FF3B4E?style=for-the-badge&logo=anthropic&logoColor=white" alt="Claude Opus 5.5"/></a>
+<a href="android-client"><img src="https://img.shields.io/badge/Kotlin-Compose-FFB77A?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin"/></a>
+<a href="backend"><img src="https://img.shields.io/badge/Python-3.12-211714?style=for-the-badge&logo=python&logoColor=FFB77A" alt="Python 3.12"/></a>
+<a href="#-voice-that-feels-like-a-conversation"><img src="https://img.shields.io/badge/Speech-on--device-30211D?style=for-the-badge&logo=onnx&logoColor=FFB77A" alt="On-device speech"/></a>
 
-## The experience
+<h3>An AI agent that uses your phone the way you do: it reads the screen, taps, types and scrolls,<br/>across any app, until the job is done and it can prove it.</h3>
 
-You can give direct commands, such as “Open WhatsApp” or “Scroll down,” as well as larger goals that require several steps and multiple apps.
+<p><i>Built so that everyone can use a smartphone, including people who can't see it, can't easily touch it,<br/>or can't keep up with it.</i></p>
 
-For example:
+<a href="#-the-problem"><b>The problem</b></a> ·
+<a href="#-built-for-the-people-phones-leave-behind"><b>Who it's for</b></a> ·
+<a href="#-watch-it-work"><b>Demo</b></a> ·
+<a href="#-how-it-works"><b>How it works</b></a> ·
+<a href="#-built-to-be-trusted"><b>Safety</b></a> ·
+<a href="#-architecture"><b>Architecture</b></a> ·
+<a href="#-run-it-yourself"><b>Run it</b></a>
 
-> “Find the address Maya sent me, check how long it will take to get there, and prepare a message telling her when I’ll arrive.”
+</div>
 
-The assistant understands the request, finds the relevant conversation, gets the address, checks the route, and prepares the message. If a necessary detail is unclear, it asks a focused question. You can correct the request, pause the task, or stop it while it works.
+<br/>
 
-Requests can be typed or spoken. Voice is a replaceable input and output layer around the same underlying brain.
+## 🔥 The problem
 
-## Core capabilities
+**Your phone can do almost anything, but you have to tap through every step yourself.**
 
-- **Understand intent:** Interpret natural-language requests, constraints, and follow-up corrections.
-- **Plan across apps:** Break goals into steps and carry relevant information between applications.
-- **Understand the screen:** Combine available UI descriptions with visual understanding when needed.
-- **Act on the phone:** Use direct app or system actions where available, and interact with visible controls when necessary.
-- **Check its work:** Look for evidence that the intended result occurred before claiming completion.
-- **Recover and communicate:** Adapt to unexpected screens, retain task context, and explain when it needs help.
-- **Remember useful context:** Track the current task and, over time, support personal preferences and routines under the user’s control.
+Ordering dinner, texting a friend that you're late, booking a ride, paying someone back: every one of these
+means unlocking, finding the app, hunting through menus, closing popups and tapping a dozen times. It needs
+your eyes and both hands the whole time.
 
-## How the system fits together
+"Smart" assistants were supposed to fix this. They don't, because they only work where an app developer built
+an integration for them. Ask one to order from the restaurant app you actually use, and you get a web search.
+**Most of the apps on your phone are invisible to your assistant.**
 
-```text
-Typed or spoken request
-           ↓
-    Assistant brain
- Understand • Plan • Remember
-           ↕
-   Phone understanding
- UI information • Screenshots
-           ↕
-      Phone control
- Apps • Navigation • Actions
-           ↓
-  Verified result or question
+<div align="center">
+<img src="docs/readme/problem.svg" alt="Today: twelve manual steps to order a pizza. With Jarvis: one sentence." width="100%"/>
+</div>
+
+> [!IMPORTANT]
+> **The insight:** every app already describes itself to Android, through the same accessibility layer screen
+> readers use. If an AI can read that and act on it, it can work in **any app, with zero integration**. No API,
+> no partnership, no waiting for developers. That's Jarvis.
+
+<br/>
+
+## 💛 Built for the people phones leave behind
+
+Smartphones are how we bank, see a doctor, order groceries, call a ride and stay in touch with family. But they're
+designed for people who can **see** a small screen, **tap** precisely, and **keep up** with constant redesigns.
+Hundreds of millions of people can't do all three, and every year more of daily life moves onto the phone.
+
+<div align="center">
+<img src="docs/readme/impact.svg" alt="1.3 billion people live with a significant disability, 2.2 billion have a vision impairment, and 1 in 6 people will be 60 or older by 2030." width="100%"/>
+<br/><sub>Sources: WHO fact sheets on <a href="https://www.who.int/news-room/fact-sheets/detail/disability-and-health">disability</a>, <a href="https://www.who.int/news-room/fact-sheets/detail/blindness-and-visual-impairment">vision impairment</a> and <a href="https://www.who.int/news-room/fact-sheets/detail/ageing-and-health">ageing</a>.</sub>
+</div>
+
+<br/>
+
+> **Picture Ruth, 78.** Macular degeneration has blurred the middle of her vision, and arthritis makes small
+> buttons hard to hit. Her prescription refill, her grocery order and video calls with her grandkids are all
+> in apps she can barely use. Every time an app updates, she has to call her daughter for help.
+>
+> With Jarvis, Ruth just says *"Reorder my groceries from last week."* Jarvis says each step out loud, asks her
+> one simple question when it needs to, reads back the exact items and total, and only orders when she says
+> **"Yes."** For the first time in years, she can do it herself.
+>
+> <sub>Ruth is an illustrative persona.</sub>
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+### 🦯 Blind & low vision
+**Today:** screen readers read the screen one item at a time. A single checkout can take dozens of swipes, and
+an unlabeled button is a dead end.
+
+**With Jarvis:** say the goal, not the swipes. Every step is spoken in a few words. When an icon has no label,
+Jarvis **looks at the screenshot** to work out what it is.
+
+</td>
+<td width="33%" valign="top">
+
+### 👵 Older adults
+**Today:** tiny text, buttons that move with every update, fear of tapping the wrong thing, and scams that
+target them.
+
+**With Jarvis:** plain speech in, plain speech out. It reads back **exactly what it will buy and the total**
+before it acts. Instructions hidden in messages and ads are ignored.
+
+</td>
+<td width="33%" valign="top">
+
+### ✋ Motor disabilities
+**Today:** Parkinson's tremors, ALS, arthritis, spinal cord injury or limb loss can make precise taps, swipes and
+typing slow, painful or impossible.
+
+**With Jarvis:** your voice does the tapping, scrolling and typing. You start it with one gesture, and Jarvis
+does the dozens of precise touches that follow.
+
+</td>
+</tr>
+<tr>
+<td width="33%" valign="top">
+
+### 🧠 Cognitive & learning differences
+**Today:** deep menus, screens full of text, and remembering where every setting lives, in every app.
+
+**With Jarvis:** one sentence. If it needs something, it asks **one short question with a few choices**,
+never a wall of options.
+
+</td>
+<td width="33%" valign="top">
+
+### 🩹 Temporary & situational
+**Today:** a broken wrist, recovering from surgery, holding a baby, cooking, driving. Anyone can lose the use of
+their hands or eyes for a while.
+
+**With Jarvis:** the phone keeps working for you, even when you can't look at it or touch it.
+
+</td>
+<td width="33%" valign="top">
+
+### 🤝 Families & caregivers
+**Today:** the endless "can you do this on my phone for me?" calls, and loved ones who lose independence
+because one app is too hard.
+
+**With Jarvis:** people do things themselves again, with guardrails that make it safe to let them.
+
+</td>
+</tr>
+</table>
+
+### Accessibility is built in from the start
+
+| If you… | Jarvis… |
+|---|---|
+| **can't see the screen** | reads it for you through Android's accessibility layer, says every step out loud, and asks its questions by voice |
+| **can't tap or type precisely** | does every tap, swipe and keystroke itself, in any app |
+| **meet an unlabeled icon** | takes a screenshot with numbered boxes drawn on it and works out what the icon does |
+| **worry about mistakes or scams** | won't order, pay, send or delete without your spoken Yes, double-checks that Yes, and ignores instructions written on screen |
+| **get lost in menus** | asks one question at a time, with up to six simple choices |
+| **want to know it really worked** | only says "done" when it can quote the confirmation from the screen |
+| **care about privacy** | turns your speech into text on the phone, offline, and never saves screens or screenshots to disk |
+
+<br/>
+
+## ✨ What Jarvis does
+
+You say what you want. Jarvis works out the steps and drives the phone itself. You can watch an animated orb
+and a glow around the screen edge, and hear it say what it's doing.
+
+| | |
+|---|---|
+| 🗣️ **Talk to it** | Hold the assistant gesture or tap the orb and speak. Speech recognition runs **on the phone**, offline. |
+| 🧠 **It plans** | Turns "order a large pepperoni from DoorDash" into search → pick → size → cart → checkout. |
+| 👆 **It acts** | Taps, types, scrolls, goes back and opens apps, on the real UI, in **any app**. |
+| 🔍 **It checks itself** | After every action it asks *what changed?* If nothing did, it tries something else. |
+| ✋ **It asks you** | Missing a detail like which size or which address? It asks one short question, out loud. |
+| 🛑 **It waits for your Yes** | It won't place an order, pay, send, post or delete until you approve the exact summary. |
+| ✅ **It proves it** | It only says "done" when it can quote the confirmation off the screen. |
+
+<br/>
+
+## 🎬 Watch it work
+
+<div align="center">
+<img src="docs/readme/run.svg" alt="A sample run: open DoorDash, search, pick Large, add to cart, ask before ordering, finish with proof." width="100%"/>
+<br/><sub>A sample run of the DoorDash test. Each status line is spoken aloud while it works.</sub>
+</div>
+
+<!-- Demo video: drop a screen recording here, e.g.
+<div align="center"><a href="https://youtu.be/XXXX"><img src="docs/readme/demo-thumb.png" width="80%"/></a></div>
+-->
+
+<br/>
+
+## ⚙️ How it works
+
+Jarvis is a **tight loop**, not a script. Each turn it looks at the screen as it is *right now*, picks exactly
+one action, checks it against hard rules, runs it, and measures what changed. It keeps going until the screen
+itself proves the task is done.
+
+<div align="center">
+<img src="docs/readme/loop.svg" alt="The agent loop: see, think, check, act, verify." width="100%"/>
+</div>
+
+<details open>
+<summary><b>The five steps, in detail</b></summary>
+<br/>
+
+| Step | What happens | Why it matters |
+|---|---|---|
+| **1 · See** | The phone sends its accessibility tree. The backend turns it into a numbered outline: `[12] button "Add to cart"`. | Text is far lighter than a picture, so turns stay fast and cheap. |
+| **2 · Think** | Claude gets the task, notes, recent steps and the screen, and calls **exactly one** of 12 strictly typed tools. | One action per turn means it never acts on a screen it hasn't seen. |
+| **3 · Check** | Code, not the model, checks the action: does `[12]` exist? Is it irreversible? Is it a password field? | Guardrails that a clever prompt can't talk its way past. |
+| **4 · Act** | The phone performs the gesture through Android's Accessibility API and reports back honestly. | Works on any app's real UI, the same way you'd use it. |
+| **5 · Verify** | The before and after screens are compared: *new screen*, *"Large" now checked*, *nothing changed*. | Repeated no-ops are spotted and it tries another way instead of looping. |
+
+When the text isn't enough (unlabeled icons, canvas or web content), Jarvis grabs a screenshot and **draws the same
+numbered boxes on it**, so the picture and the outline use the same numbers.
+
+</details>
+
+<br/>
+
+## 🛡️ Built to be trusted
+
+An agent that can tap anything on your phone has to be safe by design. Jarvis's guardrails live **in code**,
+outside the model.
+
+<div align="center">
+<img src="docs/readme/trust.svg" alt="Guardrails: ask before irreversible actions, never type secrets, done needs proof." width="100%"/>
+</div>
+
+<table>
+<tr><td>🧾 <b>Approval with receipts</b></td><td>Irreversible buttons (order, pay, send, post, delete, book…) are caught by code, not left to the model's judgment. The approval prompt has to name the items and the <b>exact total shown on screen</b>.</td></tr>
+<tr><td>👂 <b>Double-checked "yes"</b></td><td>Spoken replies can be misheard, so a second, separate model call has to agree that your reply clearly approves <i>exactly this</i> action, with no changes or conditions.</td></tr>
+<tr><td>🧱 <b>Prompt-injection resistant</b></td><td>Screen text is treated as <b>data, never instructions</b>. A sneaky "ignore your task and…" in a message or an ad is just text on a screen.</td></tr>
+<tr><td>🔑 <b>Secrets stay yours</b></td><td>Jarvis refuses to type passwords, codes or card numbers. You type them, and it waits. Secret fields are redacted from logs.</td></tr>
+<tr><td>📸 <b>Proof or it didn't happen</b></td><td><code>finish</code> is rejected unless its proof phrases appear <b>word for word</b> on the current screen and aren't just an echo of what it typed.</td></tr>
+<tr><td>⏱️ <b>Hard budgets</b></td><td>50 steps, 80 model calls, 15 minutes per task. When it's stuck, it stops and asks you instead of thrashing.</td></tr>
+<tr><td>⏸️ <b>You're in charge</b></td><td>Pause, Stop or change the task mid-run. Corrections are added to the plan ("newest wins").</td></tr>
+<tr><td>📓 <b>Full audit trail</b></td><td>Every event is written to a per-task JSONL notebook and <code>fsync</code>ed <b>before</b> each command is sent, so even a crash leaves a complete record.</td></tr>
+</table>
+
+<br/>
+
+## 🎙️ Voice that feels like a conversation
+
+- **On-device speech recognition:** [Moonshine](https://github.com/usefulsensors/moonshine) ASR with Silero VAD,
+  running locally through [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). The models are pinned and
+  SHA-256 verified at build time. Your voice never leaves the phone.
+- **Interruptible duplex:** Jarvis speaks its status and questions aloud, and you can talk over it to answer.
+- **It feels alive:** a Gemini-style screen-edge aura and a Siri-style orb respond to its state and to the live
+  loudness of your voice. They flow while it works, brighten while it listens, and dim when paused.
+- **Works as the system assistant:** set Jarvis as Android's default assistant and call it up from any app with
+  the assistant gesture.
+
+<br/>
+
+## 🏗️ Architecture
+
+<div align="center">
+<img src="docs/readme/architecture.svg" alt="Architecture: Android app, Jarvis backend, Claude." width="100%"/>
+</div>
+
+<details>
+<summary><b>One task, message by message</b></summary>
+<br/>
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as You
+    participant P as 📱 Phone
+    participant J as 🧠 Jarvis
+    participant C as ☁️ Claude
+
+    U->>P: "Order a large pepperoni from DoorDash"
+    P->>J: hello · task
+    J->>P: read_screen
+    P-->>J: result (accessibility tree)
+    loop until the screen proves it's done
+        J->>C: task + notes + steps + SCREEN NOW
+        C-->>J: one tool call, e.g. tap [12] "Add to cart"
+        J->>J: guardrails check
+        J->>P: progress "Adding the pizza to cart." 🔊
+        J->>P: command tap [12]
+        P-->>J: result + new screen
+        J->>J: what changed?
+    end
+    C-->>J: confirm_and_tap [24] "Place order"
+    J->>P: ask "Place order: 1 Large Pepperoni, total $31.20?"
+    U->>P: "Yes"
+    P->>J: answer
+    J->>C: does this reply clearly approve?
+    C-->>J: APPROVE
+    J->>P: command tap [24]
+    C-->>J: finish, proof: "Order confirmed"
+    J->>J: proof is on screen ✓
+    J->>P: done ✅
 ```
 
-The brain decides what to do and whether the task has succeeded. The phone integration supplies observations and executes supported actions. They continuously exchange information as the task progresses.
+</details>
 
-## Design principles
+<br/>
 
-- **General capability:** Build toward tasks across many applications rather than a fixed collection of scripts.
-- **Flexible intelligence:** Keep models and providers replaceable so the system can evolve with available technology.
-- **Flexible deployment:** Preserve the option to run intelligence on the phone, remotely, or through a combination of both.
-- **Responsive interaction:** Keep routine decisions fast and use deeper reasoning when the task requires it.
-- **User control:** Respect the scope of the request, support interruption, and seek clarification or authorization when necessary.
-- **Honest completion:** Report confirmed outcomes and clearly identify uncertainty or unfinished work.
+## 🧩 Why this is different
 
-## Scope of the current effort
+| | Voice assistants | Automation apps | **Jarvis** |
+|---|:---:|:---:|:---:|
+| Works in apps that never integrated | ❌ | ⚠️ hand-built per app | ✅ |
+| Understands a goal, not a command | ⚠️ | ❌ | ✅ |
+| Multi-step, across screens | ⚠️ | ⚠️ scripted | ✅ adapts live |
+| Recovers from popups and layout changes | ❌ | ❌ breaks | ✅ |
+| Asks before spending money | ⚠️ | ❌ | ✅ itemized |
+| Proves the task actually happened | ❌ | ❌ | ✅ |
 
-The project has two main parts:
+<br/>
 
-| Part | Responsibility |
-| --- | --- |
-| **Brain and agent engineering — you** | Understanding, planning, task memory, decisions, verification, recovery, and conversation |
-| **Android integration and phone control — your friend** | Reading phone state, capturing screens, executing actions, and device integration |
+## 🔬 Engineering highlights
 
-Specific models, hosting choices, integration formats, and development milestones belong in the separate build plan. This overview defines the product concept independently of those choices.
+- **Strict tool use, one action per call.** Every model reply is a schema-validated tool call. Invalid replies get
+  a targeted retry note instead of crashing the task.
+- **Stale-target protection.** If the screen shifts between deciding and tapping, the phone refuses (`stale_screen`
+  / `stale_target`) instead of tapping the wrong thing. The backend then finds the item again by its label.
+- **Built for flaky reality.** Rate limits and outages get backoff. If the model is overloaded, a fallback model
+  answers. Empty or loading screens are re-read. Late results are reconciled.
+- **Prompt caching** on the system prompt keeps repeated turns cheap and fast.
+- **Observability.** Run `jarvis --debug` for per-call latency and tokens, and a timing line for every task
+  (AI vs phone vs waiting on you). A live **Streamlit dashboard** replays every run's journey.
+- **Tested.** Unit tests cover the confirmation guard, voice turn-taking, loudness, overlay state and task outcomes.
 
-## What success looks like
+<br/>
 
-You can hand the assistant a goal, let it work through the relevant apps, and receive an accurate result. When it encounters ambiguity or a limitation, it asks a useful question or explains the blocker while preserving the context needed to continue.
+## 🚀 Run it yourself
+
+<details open>
+<summary><b>1 · Start the brain (Mac / Linux)</b></summary>
+
+```bash
+cd backend
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -e .
+cp .env.example .env              # add ANTHROPIC_API_KEY
+.venv/bin/jarvis                  # serves ws://0.0.0.0:8000/agent
+```
+
+`JARVIS_MODEL` (default `claude-opus-5-5`) and `JARVIS_EFFORT` (default `medium`) are set in `.env`.
+To use the dashboard: `pip install -e '.[dashboard]' && streamlit run dashboard.py`.
+
+</details>
+
+<details open>
+<summary><b>2 · Install the phone app (Android 11+, arm64)</b></summary>
+
+1. Point the app at your computer in `android-client/local.properties`:
+   ```properties
+   AGENT_URL=ws://<your-computer-ip>:8000/agent
+   ```
+   On USB, run `adb reverse tcp:8000 tcp:8000` and use `ws://127.0.0.1:8000/agent`.
+2. Open `android-client/` in Android Studio and run it. The first build downloads the pinned speech models.
+3. In the app, turn on the **Jarvis accessibility service**. You can also set Jarvis as the **default assistant**.
+4. Tap **Show assistant** and say what you want.
+
+</details>
+
+<details>
+<summary><b>Try the DoorDash test</b></summary>
+
+1. *"Search DoorDash for pizza."* Navigation only.
+2. *"Order a large pepperoni pizza from DoorDash."* Answer **No** at the confirmation. Nothing is bought.
+3. Same request, answer **Yes**. It only counts as done when the order confirmation shows on screen.
+
+</details>
+
+<br/>
+
+## 🗂️ Project structure
+
+```text
+JARVIS/
+├── backend/                 🧠 the brain (Python · FastAPI · Anthropic SDK)
+│   └── src/
+│       ├── server/          WebSocket endpoint, one task per connection
+│       ├── phone/           protocol models and the phone link (commands, asks, stop)
+│       ├── agent/
+│       │   ├── brain.py     the see → think → check → act → verify loop
+│       │   ├── screen.py    accessibility tree → numbered outline, change detection
+│       │   ├── screenshots.py  numbered boxes drawn on screenshots
+│       │   ├── safety.py    irreversible actions, secrets, approval plans
+│       │   ├── checks.py    action validity and proof verification
+│       │   └── task.py      task memory and the fsynced JSONL notebook
+│       └── ai/              model calls, strict tool schemas, error handling
+├── android-client/          📱 the hands, eyes and voice (Kotlin)
+│   └── app/src/main/java/com/example/jarvis/
+│       ├── device/          screen reader, gestures, command executor, confirmation guard
+│       ├── voice/           on-device ASR, duplex turn-taking, system TTS
+│       ├── overlay/         orb, edge aura, floating panel
+│       ├── assistant/       Android VoiceInteractionService (default assistant)
+│       └── agent/           WebSocket client and task state
+└── .agents/                 design docs: phone protocol, decisions, handoff spec
+```
+
+<br/>
+
+## 🛣️ What's next
+
+- **Memory and routines:** remember your usual order, your addresses and your people, with you in control of what's kept.
+- **Running more on the phone:** quick decisions on-device, with heavier reasoning in the cloud only when needed.
+- **Wake word and fully hands-free use**, so starting a task needs no touch at all.
+- **More languages**, since speech recognition is English-only today.
+- **Testing with disabled and older users**, plus working smoothly alongside TalkBack and Switch Access.
+- **Broader app coverage:** more gestures (slide-to-confirm, drag) and richer understanding of web views.
+
+<br/>
+
+<div align="center">
+
+## 👥 Team
+
+**[Sparsh Gupta](https://github.com/Sparshg3011)** · **Saatwik Yajaman** · **[Akash Ravi](https://github.com/akash-ravi)**
+
+<sub>Built at USC.</sub>
+
+<br/>
+
+<img src="https://img.shields.io/badge/Made_with-🧡_and_too_much_coffee-FF6B35?style=flat-square" alt="Made with love"/>
+
+</div>

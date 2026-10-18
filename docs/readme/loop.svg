@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 620" width="1280" height="620" role="img" aria-label="The agent loop: see the screen, think of one action, check it against guardrails, act on the phone, verify what changed, repeat.">
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFB77A"/>
+      <stop offset="0.5" stop-color="#FF6B35"/>
+      <stop offset="1" stop-color="#FF3B4E"/>
+    </linearGradient>
+    <radialGradient id="orbCore" cx="0.42" cy="0.38" r="0.7">
+      <stop offset="0" stop-color="#FFF3EC"/>
+      <stop offset="0.3" stop-color="#FFB77A"/>
+      <stop offset="0.7" stop-color="#FF6B35"/>
+      <stop offset="1" stop-color="#FF3B4E"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FF6B35" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#FF6B35" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="6"/></filter>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="12"/></filter>
+    <path id="ring" d="M330 110 A200 200 0 1 1 329.99 110 Z"/>
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+      .node { animation: node 10s ease-in-out infinite; }
+      @keyframes node { 0% { stroke: #FF6B35; stroke-width: 3; } 8% { stroke: #FFB77A; stroke-width: 3; } 20%,100% { stroke: #614036; stroke-width: 1.5; } }
+      .nodeGlow { opacity: 0; animation: nglow 10s ease-in-out infinite; }
+      @keyframes nglow { 0% { opacity: .9; } 18%,100% { opacity: 0; } }
+      .orb { transform-box: fill-box; transform-origin: center; animation: orb 2s ease-in-out infinite; }
+      @keyframes orb { 0%,100% { transform: scale(1); } 50% { transform: scale(1.07); } }
+      .line { opacity: 0; animation: line 10s ease-out infinite; }
+      @keyframes line { 0% { opacity: 0; transform: translateX(-8px); } 4%,94% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+      .pick { animation: pick 10s ease-in-out infinite; }
+      @keyframes pick { 0%,26% { fill: transparent; stroke: transparent; } 30%,94% { fill: #FF6B35; fill-opacity: .14; stroke: #FF6B35; } 100% { fill: transparent; stroke: transparent; } }
+    </style>
+  </defs>
+
+  <rect width="1280" height="620" rx="28" fill="#100C0B"/>
+
+  <!-- ring -->
+  <use href="#ring" fill="none" stroke="#30211D" stroke-width="10"/>
+  <use href="#ring" fill="none" stroke="url(#brand)" stroke-width="2" stroke-dasharray="2 10" opacity="0.6"/>
+
+  <!-- traveller -->
+  <g>
+    <circle r="14" fill="#FF6B35" filter="url(#glow)"/>
+    <circle r="6" fill="#FFF3EC"/>
+    <animateMotion dur="10s" repeatCount="indefinite" rotate="auto"><mpath href="#ring"/></animateMotion>
+  </g>
+
+  <!-- centre -->
+  <circle cx="330" cy="310" r="110" fill="url(#halo)"/>
+  <g class="orb"><circle cx="330" cy="300" r="40" fill="url(#orbCore)"/>
+    <ellipse cx="320" cy="290" rx="18" ry="10" fill="#FFF3EC" opacity="0.5" filter="url(#soft)"/></g>
+  <text x="330" y="370" class="sans" font-size="16" font-weight="700" fill="#FFF3EC" text-anchor="middle">One action per turn</text>
+  <text x="330" y="392" class="sans" font-size="13" fill="#CCADA0" text-anchor="middle">until the screen proves it's done</text>
+
+  <!-- nodes: 5 points on the ring, clockwise from top, 2 s apart -->
+  <g class="sans">
+    <!-- 1 SEE (top) -->
+    <g>
+      <circle cx="330" cy="110" r="34" fill="#FF6B35" class="nodeGlow" filter="url(#soft)" style="animation-delay:0s"/>
+      <circle cx="330" cy="110" r="30" fill="#211714" stroke="#614036" class="node" style="animation-delay:0s"/>
+      <text x="330" y="116" font-size="18" text-anchor="middle" fill="#FFB77A" font-weight="700">1</text>
+      <text x="330" y="54" font-size="17" font-weight="700" text-anchor="middle" fill="#FFF3EC">SEE</text>
+      <text x="330" y="74" font-size="13" text-anchor="middle" fill="#CCADA0">read the screen as numbered text</text>
+    </g>
+    <!-- 2 THINK (top right, 72deg) -->
+    <g>
+      <circle cx="520" cy="248" r="34" fill="#FF6B35" class="nodeGlow" filter="url(#soft)" style="animation-delay:2s"/>
+      <circle cx="520" cy="248" r="30" fill="#211714" stroke="#614036" class="node" style="animation-delay:2s"/>
+      <text x="520" y="254" font-size="18" text-anchor="middle" fill="#FFB77A" font-weight="700">2</text>
+      <text x="564" y="240" font-size="17" font-weight="700" fill="#FFF3EC">THINK</text>
+      <text x="564" y="260" font-size="13" fill="#CCADA0">Claude picks one of 12 tools</text>
+    </g>
+    <!-- 3 CHECK (bottom right, 144deg) -->
+    <g>
+      <circle cx="448" cy="472" r="34" fill="#FF6B35" class="nodeGlow" filter="url(#soft)" style="animation-delay:4s"/>
+      <circle cx="448" cy="472" r="30" fill="#211714" stroke="#614036" class="node" style="animation-delay:4s"/>
+      <text x="448" y="478" font-size="18" text-anchor="middle" fill="#FFB77A" font-weight="700">3</text>
+      <text x="490" y="508" font-size="17" font-weight="700" fill="#FFF3EC">CHECK</text>
+      <text x="490" y="528" font-size="13" fill="#CCADA0">guardrails: valid? irreversible? secret?</text>
+    </g>
+    <!-- 4 ACT (bottom left, 216deg) -->
+    <g>
+      <circle cx="212" cy="472" r="34" fill="#FF6B35" class="nodeGlow" filter="url(#soft)" style="animation-delay:6s"/>
+      <circle cx="212" cy="472" r="30" fill="#211714" stroke="#614036" class="node" style="animation-delay:6s"/>
+      <text x="212" y="478" font-size="18" text-anchor="middle" fill="#FFB77A" font-weight="700">4</text>
+      <text x="170" y="508" font-size="17" font-weight="700" fill="#FFF3EC" text-anchor="end">ACT</text>
+      <text x="170" y="528" font-size="13" fill="#CCADA0" text-anchor="end">phone taps, types, scrolls</text>
+    </g>
+    <!-- 5 VERIFY (top left, 288deg) -->
+    <g>
+      <circle cx="140" cy="248" r="34" fill="#FF6B35" class="nodeGlow" filter="url(#soft)" style="animation-delay:8s"/>
+      <circle cx="140" cy="248" r="30" fill="#211714" stroke="#614036" class="node" style="animation-delay:8s"/>
+      <text x="140" y="254" font-size="18" text-anchor="middle" fill="#FFB77A" font-weight="700">5</text>
+      <text x="96" y="240" font-size="17" font-weight="700" fill="#FFF3EC" text-anchor="end">VERIFY</text>
+      <text x="96" y="260" font-size="13" fill="#CCADA0" text-anchor="end">what changed?</text>
+    </g>
+  </g>
+
+  <!-- what the model sees -->
+  <g class="sans">
+    <text x="700" y="70" font-size="14" font-weight="700" letter-spacing="2" fill="#CCADA0">WHAT CLAUDE ACTUALLY SEES EACH TURN</text>
+  </g>
+  <rect x="700" y="90" width="532" height="420" rx="18" fill="#211714" stroke="#614036"/>
+  <circle cx="726" cy="114" r="5.5" fill="#FF3B4E"/><circle cx="746" cy="114" r="5.5" fill="#FFB77A"/><circle cx="766" cy="114" r="5.5" fill="#614036"/>
+  <line x1="700" y1="134" x2="1232" y2="134" stroke="#614036"/>
+  <g class="mono" font-size="14.5">
+    <text x="724" y="166" fill="#FFB77A" class="line" style="animation-delay:0s">TASK: Order a large pepperoni from DoorDash</text>
+    <text x="724" y="194" fill="#CCADA0" class="line" style="animation-delay:.2s">YOUR NOTES: plan: search → pick → cart → pay</text>
+    <text x="724" y="222" fill="#CCADA0" class="line" style="animation-delay:.4s">LAST STEPS: 4. tap "Tony's" → new screen</text>
+    <text x="724" y="258" fill="#FF6B35" class="line" style="animation-delay:.6s">SCREEN NOW:</text>
+    <text x="724" y="284" fill="#FFF3EC" class="line" style="animation-delay:.8s">App: DoorDash</text>
+    <text x="724" y="308" fill="#FFF3EC" class="line" style="animation-delay:1s">[3] field "Search Tony's Pizzeria"</text>
+    <text x="724" y="332" fill="#FFF3EC" class="line" style="animation-delay:1.2s">[9] button "Pepperoni Pizza · $18.99"</text>
+    <text x="724" y="356" fill="#FFF3EC" class="line" style="animation-delay:1.4s">  [11] radio "Large" (checked)</text>
+    <text x="724" y="380" fill="#FFF3EC" class="line" style="animation-delay:1.6s">  [12] button "Add to cart"</text>
+    <text x="724" y="404" fill="#FFF3EC" class="line" style="animation-delay:1.8s">[15] list (scrollable)</text>
+  </g>
+  <rect x="716" y="364" width="236" height="24" rx="6" fill="none" class="pick"/>
+  <line x1="700" y1="428" x2="1232" y2="428" stroke="#614036"/>
+  <g class="mono" font-size="14.5">
+    <text x="724" y="458" fill="#FF6B35" class="line" style="animation-delay:2.6s">→ tap [12] "Add to cart"</text>
+    <text x="724" y="484" fill="#CCADA0" class="line" style="animation-delay:3s">  why: "Adding the pizza to cart."  ← spoken aloud</text>
+  </g>
+
+  <text x="700" y="550" class="sans" font-size="15" fill="#CCADA0">Plain text first, so each turn is fast and cheap. A screenshot is sent only</text>
+  <text x="700" y="572" class="sans" font-size="15" fill="#CCADA0">when the text isn't enough, with the same numbers drawn on it.</text>
+</svg>
