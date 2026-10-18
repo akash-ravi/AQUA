@@ -16,7 +16,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import kotlin.concurrent.thread
 
 /**
- * ElevenLabs Flash v2.5 over its WebSocket, played as the audio arrives. A connection is opened ahead of
+ * ElevenLabs Turbo v2.5 over its WebSocket, played as the audio arrives. A connection is opened ahead of
  * each reply ([warm]) so speaking skips the TLS handshake. Public calls are on the main thread.
  */
 internal class ElevenSpeaker(private val tokens: VoiceTokens, private val client: OkHttpClient) {
@@ -202,7 +202,7 @@ internal class ElevenSpeaker(private val tokens: VoiceTokens, private val client
     fun level(): Float = current?.level() ?: 0f
 
     private fun request(token: VoiceToken) = Request.Builder().url(
-        "wss://api.elevenlabs.io/v1/text-to-speech/${token.voiceId}/stream-input?model_id=eleven_flash_v2_5" +
+        "wss://api.elevenlabs.io/v1/text-to-speech/${token.voiceId}/stream-input?model_id=eleven_turbo_v2_5" +
             "&output_format=pcm_$SAMPLE_RATE&auto_mode=true&inactivity_timeout=$IDLE_SECONDS" +
             "&single_use_token=${token.token}"
     ).build()
@@ -240,7 +240,7 @@ internal class ElevenSpeaker(private val tokens: VoiceTokens, private val client
 
     private companion object {
         const val KIND = "speak"
-        const val SAMPLE_RATE = 22050
+        const val SAMPLE_RATE = 44100
         const val IDLE_SECONDS = 180 // ElevenLabs' maximum inactivity_timeout
         const val DRAIN_MARGIN_MS = 40L
         const val DRAIN_LIMIT_MS = 5_000L
