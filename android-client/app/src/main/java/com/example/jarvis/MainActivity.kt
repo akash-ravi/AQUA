@@ -100,8 +100,7 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, "Enable the Jarvis accessibility service first", Toast.LENGTH_LONG).show()
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         } else {
-            service.startTask(task)
-            moveTaskToBack(true)
+            if (service.startTask(task)) moveTaskToBack(true)
         }
     }
 

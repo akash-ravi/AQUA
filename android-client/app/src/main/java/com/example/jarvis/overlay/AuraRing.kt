@@ -1,6 +1,6 @@
 package com.example.jarvis.overlay
 
-import android.accessibilityservice.AccessibilityService
+import android.content.Context
 import android.animation.ValueAnimator
 import android.content.res.Configuration
 import android.graphics.Canvas
@@ -19,9 +19,9 @@ import android.view.animation.LinearInterpolator
 import com.example.jarvis.ui.BrandColors
 
 /** Display-sized, non-interactive window, independent of the panel and keyboard bounds. */
-class AuraRing(service: AccessibilityService) {
-    private val windows = service.getSystemService(WindowManager::class.java)
-    private val density = service.resources.displayMetrics.density
+class AuraRing(context: Context) {
+    private val windows = context.getSystemService(WindowManager::class.java)
+    private val density = context.resources.displayMetrics.density
     private var attached = false
     private val edge = Path()
     private val radii = FloatArray(8) { 28 * density }
@@ -43,7 +43,7 @@ class AuraRing(service: AccessibilityService) {
         setTitle("Jarvis edge aura")
     }
 
-    private val view = object : View(service) {
+    private val view = object : View(context) {
         override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
             if (Build.VERSION.SDK_INT >= 31) {
                 val positions = intArrayOf(RoundedCorner.POSITION_TOP_LEFT, RoundedCorner.POSITION_TOP_RIGHT,
@@ -69,7 +69,9 @@ class AuraRing(service: AccessibilityService) {
 
         override fun onConfigurationChanged(newConfig: Configuration) {
             super.onConfigurationChanged(newConfig)
-            post { syncBounds(); requestApplyInsets() }
+            post {
+                if (isAttachedToWindow) { syncBounds(); requestApplyInsets() }
+            }
         }
 
         override fun onDraw(canvas: Canvas) {
