@@ -1,6 +1,5 @@
 import json
 import os
-import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,7 +34,6 @@ class Task:
     goal: str
     device_id: str
     id: str = field(default_factory=lambda: new_id("t"))
-    revision: int = 0
     corrections: list[str] = field(default_factory=list)
     answers: list[tuple[str, str]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -66,14 +64,6 @@ class Task:
 
     def snapshot(self) -> dict:
         return asdict(self)
-
-    @classmethod
-    def from_snapshot(cls, data: dict) -> "Task":
-        data = dict(data)
-        data["steps"] = [Step(**step) for step in data.get("steps", [])]
-        data["answers"] = [tuple(pair) for pair in data.get("answers", [])]
-        known = cls.__dataclass_fields__
-        return cls(**{key: value for key, value in data.items() if key in known})
 
 
 class Notebook:
@@ -109,15 +99,6 @@ class Notebook:
         return events
 
 
-def load_task(data_dir: Path, task_id: str) -> tuple[Task, list[dict]] | None:
-    notebook = Notebook.for_task(data_dir, task_id)
-    events = notebook.read()
-    snapshot = next((e["task"] for e in reversed(events) if e["event"] == "state"), None)
-    if snapshot is None:
-        return None
-    return Task.from_snapshot(snapshot), events
-
-
 def unfinished_task_ids(data_dir: Path) -> list[str]:
     folder = Path(data_dir) / "tasks"
     if not folder.exists():
@@ -147,82 +128,3 @@ def mark_interrupted_after_restart(data_dir: Path) -> list[str]:
         notebook.write("status", to="interrupted", reason="server restart")
         marked.append(task_id)
     return marked
-
-
-TASK_ID = re.compile(r"^t-[0-9a-f]{16}$")
-
-
-def is_task_id(text: str) -> bool:
-    return bool(TASK_ID.match(text))
-
-
-def task_summary(events: list[dict]) -> dict:
-    """The short version of a task for a list in the app."""
-    started = next((e for e in events if e["event"] == "task"), {})
-    done = next((e for e in reversed(events) if e["event"] == "done"), None)
-    snapshot = next((e["task"] for e in reversed(events) if e["event"] == "state"), {})
-    last_status = next((e.get("to") for e in reversed(events) if e["event"] == "status"), None)
-    if done:
-        status = done.get("outcome")
-    elif last_status in ("interrupted", "paused"):
-        status = last_status
-    else:
-        status = "running"
-    return {
-        "task_id": started.get("task_id") or snapshot.get("id"),
-        "goal": started.get("goal") or snapshot.get("goal", ""),
-        "device_id": started.get("device_id") or snapshot.get("device_id", ""),
-        "ai": started.get("ai", ""),
-        "started_at": events[0]["at"] if events else None,
-        "ended_at": done["at"] if done else None,
-        "status": status,
-        "summary": done.get("summary") if done else None,
-        "steps": len(snapshot.get("steps", [])),
-    }
-
-
-def list_tasks(data_dir: Path, device_id: str | None = None, limit: int = 50) -> list[dict]:
-    folder = Path(data_dir) / "tasks"
-    if not folder.exists():
-        return []
-    paths = sorted(folder.glob("t-*.jsonl"), key=lambda path: path.stat().st_mtime, reverse=True)
-    tasks = []
-    for path in paths:
-        events = Notebook(path).read()
-        if not events:
-            continue
-        summary = task_summary(events)
-        if device_id and summary["device_id"] != device_id:
-            continue
-        tasks.append(summary)
-        if len(tasks) >= limit:
-            break
-    return tasks
-
-
-def task_story(data_dir: Path, task_id: str) -> dict | None:
-    """Everything the app needs to show one task: the steps, the questions and how it ended."""
-    events = Notebook.for_task(data_dir, task_id).read()
-    if not events:
-        return None
-    snapshot = next((e["task"] for e in reversed(events) if e["event"] == "state"), {})
-    done = next((e for e in reversed(events) if e["event"] == "done"), None)
-    questions = []
-    for event in events:
-        if event["event"] == "ask":
-            questions.append({"at": event["at"], "kind": event.get("kind"), "text": event.get("text"),
-                              "answer": None})
-        elif event["event"] == "answer" and questions and questions[-1]["answer"] is None:
-            questions[-1]["answer"] = event.get("text") or event.get("status")
-    steps = [{"n": step["n"], "action": step["tool"], "label": step["label"], "why": step["why"],
-              "status": step["status"], "result": step.get("change") or step.get("error") or step["status"]}
-             for step in snapshot.get("steps", [])]
-    return {
-        **task_summary(events),
-        "proof": done.get("proof") if done else None,
-        "corrections": snapshot.get("corrections", []),
-        "done_for_good": snapshot.get("done_for_good", []),
-        "unsure": snapshot.get("unsure", []),
-        "questions": questions,
-        "steps": steps,
-    }

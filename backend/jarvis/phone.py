@@ -9,7 +9,6 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 from jarvis.messages import (
-    ACTIONS,
     Answer,
     Ask,
     BadMessage,
@@ -18,7 +17,6 @@ from jarvis.messages import (
     ErrorInfo,
     ErrorMessage,
     Message,
-    Progress,
     Result,
     Start,
     Stop,
@@ -34,20 +32,16 @@ log = logging.getLogger("jarvis.phone")
 MAX_BAD_MESSAGES = 5
 TIMEOUT_MS = {"read_screen": 5_000, "open_app": 15_000, "screenshot": 8_000}
 DEFAULT_TIMEOUT_MS = 10_000
-ASK_CANCEL_REASONS = {"stopped": "stopped", "paused": "paused", "updated": "replaced"}
 YES_WORDS = {"yes", "y", "yeah", "yep", "ok", "okay", "sure", "confirm", "approve", "go ahead"}
 NO_WORDS = {"no", "n", "nope", "cancel", "stop", "don't"}
 
 
 class Interrupted(Exception):
-    def __init__(self, reason: str):
-        super().__init__(reason)
-        self.reason = reason  # stopped | paused | updated | gone
+    """The user pressed Stop."""
 
 
 class PhoneGone(Interrupted):
-    def __init__(self):
-        super().__init__("gone")
+    pass
 
 
 @dataclass
@@ -55,7 +49,6 @@ class AskOutcome:
     status: Literal["approved", "declined", "text", "expired", "cancelled"]
     ask_id: str = ""
     text: str = ""
-    reason: str = ""  # for cancelled: stopped | paused | replaced
 
 
 def new_command(action: str, **fields) -> Command:
@@ -68,19 +61,12 @@ class PhoneLink:
         self.ws = websocket
         self.width = 0
         self.height = 0
-        self.actions: set[str] = set(ACTIONS)
         self.apps: dict[str, str] = {}
-        self.revision = 0
         self.stop_requested = False
-        self.stopped_by_phone = False
-        self.pause_requested = False
-        self.changed = asyncio.Event()
         self.gone = False
         self.closed = False
         self.on_late_result: Callable[[Result], None] | None = None
-        self.last_progress: Progress | None = None
         self.bad_messages = 0
-        self._updates: list[str] = []
         self._open_command: tuple[str, asyncio.Future, Command] | None = None
         self._open_ask: tuple[str, asyncio.Future, str] | None = None
         self._late_commands: dict[str, Command] = {}
@@ -110,52 +96,44 @@ class PhoneLink:
                 return None
             raw = frame.get("text")
             if raw is None:
-                raw = frame.get("bytes") or b""
+                log.info("The phone sent a binary frame; closing.")
+                await self.close(1003)
+                return None
             try:
                 return parse_phone_message(raw)
             except BadMessage as problem:
-                if isinstance(raw, bytes):
-                    log.info("The phone sent a binary frame; closing.")
-                    await self.close(1003)
-                    return None
-                await self.reject(problem.code, problem.message)
+                await self.reject(problem.message)
         return None
 
-    async def reject(self, code: str, message: str) -> None:
+    async def reject(self, message: str) -> None:
         self.bad_messages += 1
         log.info("Bad message from the phone: %s", message)
         if self.bad_messages >= MAX_BAD_MESSAGES:
             log.info("Too many bad messages; closing.")
             await self.close(1003)
             return
-        await self.send_error(code, message)
+        await self.send(ErrorMessage(message=message))
 
-    async def send(self, message: Message, check: Callable[[], None] | None = None) -> None:
+    async def send(self, message: Message, check_stop: bool = False) -> None:
         async with self._send_lock:
-            if check:
-                check()
             if self.gone or self.closed:
                 raise PhoneGone()
-            payload = message_to_wire(message)
-            if payload is None:
-                return
+            if check_stop and self.stop_requested:
+                raise Interrupted()
             try:
-                await self.ws.send_text(json.dumps(payload))
+                await self.ws.send_text(json.dumps(message_to_wire(message)))
             except (OSError, RuntimeError, WebSocketDisconnect):
                 self._mark_gone()
                 raise PhoneGone() from None
-
-    async def send_error(self, code: str, message: str, *, task_id: str | None = None) -> None:
-        await self.send(ErrorMessage(code=code, message=message, task_id=task_id))
 
     async def run(self, command: Command, *, grace: float = 5.0) -> Result:
         assert self._open_command is None, "a command is already open"
         future = asyncio.get_running_loop().create_future()
         self._open_command = (command.command_id, future, command)
         try:
-            await self.send(command, check=lambda: self._check_can_send(command))
+            await self.send(command, check_stop=True)
             try:
-                # shield keeps a late result matchable; the wait is not cut short by stop/pause/update
+                # shield keeps a late result matchable; the wait is not cut short by Stop
                 return await asyncio.wait_for(asyncio.shield(future), command.timeout_ms / 1000 + grace)
             except TimeoutError:
                 log.info("No result for %s %s in time.", command.action, command.command_id)
@@ -174,38 +152,33 @@ class PhoneLink:
         self._open_ask = (ask_id, future, kind)
         try:
             try:
-                await self.send(
-                    Ask(ask_id=ask_id, kind=kind, text=with_choices(text, choices)),
-                    check=self._check_can_ask,
-                )
+                await self.send(Ask(ask_id=ask_id, kind=kind, text=with_choices(text, choices)), check_stop=True)
             except PhoneGone:
                 raise
-            except Interrupted as stopped_first:
-                return AskOutcome("cancelled", ask_id, reason=ASK_CANCEL_REASONS[stopped_first.reason])
+            except Interrupted:
+                return AskOutcome("cancelled", ask_id)
             deadline = asyncio.get_running_loop().time() + expires_in
             while not future.done():
-                reason = self._interruption(include_pause=True)
-                if reason == "gone":
+                if self.gone:
                     raise PhoneGone()
-                if reason:
-                    return await self._cancel_ask(ask_id, ASK_CANCEL_REASONS[reason])
+                if self.stop_requested:
+                    return AskOutcome("cancelled", ask_id)
                 remaining = deadline - asyncio.get_running_loop().time()
                 if remaining <= 0:
-                    return await self._cancel_ask(ask_id, "expired")
+                    return AskOutcome("expired", ask_id)
                 await self._wait_for_change(future, remaining)
             return _outcome(ask_id, kind, future.result())
         finally:
             self._open_ask = None
 
-    async def interruptible(self, awaitable: Awaitable, *, include_pause: bool = True):
+    async def interruptible(self, awaitable: Awaitable):
         job = asyncio.ensure_future(awaitable)
         try:
             while not job.done():
-                reason = self._interruption(include_pause)
-                if reason == "gone":
+                if self.gone:
                     raise PhoneGone()
-                if reason:
-                    raise Interrupted(reason)
+                if self.stop_requested:
+                    raise Interrupted()
                 await self._wait_for_change(job, None)
             return job.result()
         finally:
@@ -213,23 +186,14 @@ class PhoneLink:
                 job.cancel()
                 await asyncio.wait({job})
 
-    async def progress(self, state: str, text: str, step: int = 0) -> None:
-        self.last_progress = Progress(state=state, text=text, step=step)
-
-    def request_stop(self) -> None:
-        """Stop asked for from outside the task's own connection (the app's HTTP stop button)."""
-        self.stop_requested = True
-        log.info("Stop requested through the app.")
-        self._notify()
-
     async def finish(self, done: Done) -> None:
-        if not self.stopped_by_phone:
+        if not self.stop_requested:
             await self.send(done)
         await self.close(1000)
 
-    async def fail(self, code: str, message: str, *, task_id: str | None = None) -> None:
+    async def fail(self, message: str) -> None:
         try:
-            await self.send_error(code, message, task_id=task_id)
+            await self.send(ErrorMessage(message=message))
         except PhoneGone:
             pass
         await self.close(1000)
@@ -247,43 +211,6 @@ class PhoneLink:
         if self._reader and self._reader is not asyncio.current_task():
             self._reader.cancel()
 
-    def pending_updates(self) -> list[str]:
-        updates, self._updates = self._updates, []
-        return updates
-
-    async def wait_changed(self) -> None:
-        await self.changed.wait()
-        self.changed.clear()
-
-    def _check_can_send(self, command: Command) -> None:
-        if self.gone:
-            raise PhoneGone()
-        if self.stop_requested:
-            raise Interrupted("stopped")
-        if self.pause_requested:
-            raise Interrupted("paused")
-
-    def _check_can_ask(self) -> None:
-        reason = self._interruption(include_pause=True)
-        if reason == "gone":
-            raise PhoneGone()
-        if reason:
-            raise Interrupted(reason)
-
-    def _interruption(self, include_pause: bool) -> str | None:
-        if self.gone:
-            return "gone"
-        if self.stop_requested:
-            return "stopped"
-        if include_pause and self.pause_requested:
-            return "paused"
-        if self._updates:
-            return "updated"
-        return None
-
-    async def _cancel_ask(self, ask_id: str, reason: str) -> AskOutcome:
-        return AskOutcome("expired" if reason == "expired" else "cancelled", ask_id, reason=reason)
-
     async def _wait_for_change(self, future: asyncio.Future, timeout: float | None) -> None:
         change = asyncio.ensure_future(self._poke.wait())
         try:
@@ -292,7 +219,6 @@ class PhoneLink:
             change.cancel()
 
     def _notify(self) -> None:
-        self.changed.set()
         self._poke.set()
         self._poke = asyncio.Event()
 
@@ -327,11 +253,10 @@ class PhoneLink:
                 log.info("Ignored an answer to %s (no open question with that id).", message.ask_id)
         elif isinstance(message, Stop):
             self.stop_requested = True
-            self.stopped_by_phone = True
             log.info("The user pressed Stop.")
             self._notify()
         else:
-            await self.reject("unexpected_message", f"{message.type} is not expected now")
+            await self.reject(f"{message.type} is not expected now")
 
     def _take_result(self, wire: WireResult) -> None:
         if self._open_command and self._open_command[0] == wire.id:

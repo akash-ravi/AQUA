@@ -1,41 +1,32 @@
 import asyncio
 import logging
 import time
-from dataclasses import dataclass
 
 from jarvis import checks, safety
 from jarvis import screen as screens
-from jarvis.llm.common import AIUnavailable, AuthProblem, BadReply, QuotaUsedUp, RateLimited, SetupProblem
-from jarvis.llm.tools import tools_for
-from jarvis.messages import Command, Done, LastAction, new_id
-from jarvis.phone import Interrupted, PhoneGone
+from jarvis.claude import AIError, AIUnavailable, BadReply, RateLimited
+from jarvis.messages import Command, Done
+from jarvis.phone import Interrupted, PhoneGone, new_command
 from jarvis.pictures import marked_picture, needs_picture
 from jarvis.prompt import SYSTEM_PROMPT, build_step_message, plain_error, retry_note
 from jarvis.task import Notebook, Step, Task
 
 log = logging.getLogger("jarvis.brain")
 
-TIMEOUTS_MS = {"open_app": 15_000, "screenshot": 8_000, "read_screen": 5_000}
 PHONE_TOOLS = {"tap", "type_text", "scroll", "go_back", "go_home", "open_app"}
 AFTER_COMMIT_TOOLS = {"scroll", "wait", "finish", "give_up", "look"}
 MAX_PICTURES = 8
-
-
-@dataclass
-class Limits:
-    max_steps: int = 50
-    max_model_calls: int = 80
-    max_work_minutes: float = 15
-    max_bad_in_row: int = 3
-    max_bad_total: int = 8
-    max_wait_seconds: int = 90
-    question_expires: int = 600
-    confirm_expires: int = 120
-    extra_steps_after_commit: int = 3
-    loading_retries: int = 2
-    loading_pause: float = 1.5
-    rate_limit_waits: tuple = (5, 10, 20)
-    unavailable_waits: tuple = (2, 5)
+MAX_STEPS = 50
+EXTRA_STEPS_AFTER_COMMIT = 3
+MAX_MODEL_CALLS = 80
+MAX_WORK_MINUTES = 15
+MAX_BAD_IN_ROW = 3
+MAX_BAD_TOTAL = 8
+MAX_WAIT_SECONDS = 90
+QUESTION_EXPIRES = 600
+CONFIRM_EXPIRES = 120
+RATE_LIMIT_WAITS = (5, 10, 20)
+UNAVAILABLE_WAITS = (2, 5)
 
 
 class TaskEnded(Exception):
@@ -46,53 +37,44 @@ class TaskEnded(Exception):
         self.proof = proof
 
 
-async def run_task(task: Task, link, ai, notebook: Notebook) -> Done | None:
-    return await Brain(task, link, ai, notebook, Limits()).run()
-
-
 def brain_runner(ai):
     async def run(server_run) -> Done | None:
         task = Task(goal=server_run.goal, device_id=server_run.device_id, id=server_run.task_id)
         notebook = Notebook.for_task(server_run.settings.data_dir, task.id)
-        notebook.write("task", task_id=task.id, goal=task.goal, device_id=task.device_id, ai=getattr(ai, "name", ""))
-        return await run_task(task, server_run.link, ai, notebook)
+        notebook.write("task", task_id=task.id, goal=task.goal, device_id=task.device_id, ai=ai.name)
+        return await Brain(task, server_run.link, ai, notebook).run()
     return run
 
 
 class Brain:
-    def __init__(self, task: Task, link, ai, notebook: Notebook, limits: Limits):
+    def __init__(self, task: Task, link, ai, notebook: Notebook):
         self.task = task
         self.link = link
         self.ai = ai
         self.notebook = notebook
-        self.limits = limits
         self.screen = None
         self.view = None
-        self.settled = True
         self.warnings: list[str] = []
         self.dead_ends: set[tuple] = set()
         self.signatures: list[str] = []
         self.same_way_scrolls = 0
         self.started = time.monotonic()
         self.user_time = 0.0
-        self.images = getattr(ai, "sees_images", False) and "screenshot" in link.actions
         self.picture: tuple[str, bytes] | None = None
         self.pictured: set[str] = set()
         self.pictures_taken = 0
         self.want_picture = False
-        self.offered = {tool.name for tool in tools_for(link.actions, self.images)}
         link.on_late_result = self.late_result
 
     # ---------- the loop ----------
 
     async def run(self) -> Done | None:
         try:
-            await self.progress("running", "Starting")
             await self.read_screen()
             while True:
-                await self.handle_interrupts()
+                if self.link.stop_requested:
+                    raise TaskEnded("stopped", "Stopped as you asked.")
                 self.check_budgets()
-                await self.wait_while_loading()
                 await self.picture_if_needed()
                 decision = await self.think()
                 if decision is not None:
@@ -109,19 +91,17 @@ class Brain:
     async def think(self):
         view = self.view
         retry = None
-        rate_waits = list(self.limits.rate_limit_waits)
-        down_waits = list(self.limits.unavailable_waits)
-        revision = self.link.revision
+        rate_waits = list(RATE_LIMIT_WAITS)
+        down_waits = list(UNAVAILABLE_WAITS)
         image = self.picture[1] if self.picture and self.picture[0] == view.signature else None
         message = self.step_message(view, image_attached=image is not None)
         while True:
-            if self.task.model_calls >= self.limits.max_model_calls:
+            if self.task.model_calls >= MAX_MODEL_CALLS:
                 raise self.out_of("AI calls")
             self.task.model_calls += 1
             try:
                 decision = await self.link.interruptible(
-                    self.ai.decide(SYSTEM_PROMPT, message, tools_for(self.link.actions, self.images),
-                                   image=image, retry_note=retry))
+                    self.ai.decide(SYSTEM_PROMPT, message, image=image, retry_note=retry))
             except PhoneGone:
                 raise
             except Interrupted:
@@ -139,16 +119,14 @@ class Brain:
                 if not await self.pause_for(down_waits.pop(0)):
                     return None
                 continue
-            except (QuotaUsedUp, AuthProblem, SetupProblem) as error:
-                raise TaskEnded(self.failed_or_unsure(), error.message)
             except BadReply as error:
                 self.bad_reply(error.reason)
                 retry = retry_note(error.reason)
                 continue
+            except AIError as error:
+                raise TaskEnded(self.failed_or_unsure(), error.message)
 
-            if self.link.revision != revision:
-                return None
-            checked = self.validate(decision.tool, decision.args or {}, view)
+            checked = self.validate(decision.tool, decision.args, view)
             if isinstance(checked, str):
                 self.bad_reply(checked)
                 retry = retry_note(checked)
@@ -160,9 +138,9 @@ class Brain:
             return decision
 
     def validate(self, tool: str, args: dict, view):
-        if self.committed() and len(self.task.steps) >= self.limits.max_steps and tool not in AFTER_COMMIT_TOOLS:
+        if self.committed() and len(self.task.steps) >= MAX_STEPS and tool not in AFTER_COMMIT_TOOLS:
             return "only checking is left: scroll, wait, finish or give_up"
-        checked = checks.check_decision(tool, args, view, self.link.apps, self.offered, self.dead_ends)
+        checked = checks.check_decision(tool, args, view, self.link.apps, self.dead_ends)
         if isinstance(checked, str):
             return checked
         problem = safety.check_action(tool, checked[0], view)
@@ -171,16 +149,14 @@ class Brain:
     async def act(self, decision) -> None:
         tool, args = decision.tool, decision.args
         self.task.add_note(args.get("remember"))
-        why = (args.get("why") or "").strip()[:100]
-        if why:
-            await self.progress("running", why)
+        why = args.get("why", "")[:100]
 
         if tool in PHONE_TOOLS:
             await self.do_phone_action(tool, args, why)
         elif tool == "wait":
             await self.do_wait(args, why)
         elif tool == "look":
-            await self.take_picture(why or "Looking at the screen")
+            await self.take_picture(why)
         elif tool == "ask_user":
             await self.do_ask(args)
         elif tool == "confirm_and_tap":
@@ -188,7 +164,7 @@ class Brain:
         elif tool == "finish":
             await self.do_finish(args)
         elif tool == "give_up":
-            raise TaskEnded(self.failed_or_unsure(), args.get("reason") or "The AI gave up.")
+            raise TaskEnded(self.failed_or_unsure(), args["reason"])
         self.save()
 
     # ---------- actions ----------
@@ -207,8 +183,7 @@ class Brain:
             self.after_step(step, before)
             return
 
-        command = self.command(tool, args)
-        result = await self.send(command, step)
+        result = await self.send(self.command(tool, args), step)
         if result is None:
             return
         if (result.status == "rejected" and tool == "tap" and result.error
@@ -216,8 +191,7 @@ class Brain:
             retarget = self.same_place(before, label)
             if retarget is not None:
                 step.change = "screen shifted; tapped the same item again"
-                command = self.command(tool, {**args, "target": retarget})
-                result = await self.send(command, step)
+                result = await self.send(self.command(tool, {**args, "target": retarget}), step)
                 if result is None:
                     return
         if tool == "tap" and self.click_did_nothing(result, before) and target in before.by_index:
@@ -229,13 +203,11 @@ class Brain:
     def click_did_nothing(self, result, before) -> bool:
         if result.status == "failed" and result.error and result.error.code == "action_failed":
             return True
-        return result.status == "ok" and screens.describe_change(before, self.view, self.settled).startswith("no change")
+        return result.status == "ok" and screens.describe_change(before, self.view).startswith("no change")
 
     async def tap_at_position(self, step: Step, node) -> None:
         left, top, right, bottom = node.bounds
-        command = self.command("tap_at", {})
-        command.x, command.y = (left + right) // 2, (top + bottom) // 2
-        await self.send(command, step)
+        await self.send(new_command("tap_at", x=(left + right) // 2, y=(top + bottom) // 2), step)
 
     async def tap_then_type(self, step: Step, args: dict) -> bool:
         result = await self.send(self.command("tap", args), step)
@@ -253,7 +225,7 @@ class Brain:
         return result is not None
 
     async def picture_if_needed(self) -> None:
-        if not self.images or self.view.signature in self.pictured:
+        if self.view.signature in self.pictured:
             return
         if self.want_picture or needs_picture(self.view):
             self.want_picture = False
@@ -268,9 +240,7 @@ class Brain:
             return
         self.pictured.add(self.view.signature)
         self.pictures_taken += 1
-        command = self.command("screenshot", {})
-        command.max_side = 1280
-        result = await self.send(command, None)
+        result = await self.send(new_command("screenshot", max_side=1280), None)
         if result is None:
             return
         if result.status != "ok" or result.image is None:
@@ -291,8 +261,8 @@ class Brain:
 
     async def do_wait(self, args: dict, why: str) -> None:
         before = self.view
-        seconds = max(1, min(10, int(args.get("seconds") or 3)))
-        if self.task.wait_seconds + seconds > self.limits.max_wait_seconds:
+        seconds = args["seconds"]
+        if self.task.wait_seconds + seconds > MAX_WAIT_SECONDS:
             self.warnings.append("No more waiting; the screen is not changing. Try something else or give up.")
             return
         step = self.new_step("wait", None, f"{seconds} s", why)
@@ -304,9 +274,9 @@ class Brain:
         self.after_step(step, before)
 
     async def do_ask(self, args: dict) -> None:
-        question = args["question"].strip()
+        question = args["question"]
         step = self.new_step("ask_user", None, question, "")
-        outcome = await self.ask("question", question, args.get("choices"), self.limits.question_expires)
+        outcome = await self.ask("question", question, args.get("choices"), QUESTION_EXPIRES)
         if outcome is None:
             step.status = "cancelled"
             return
@@ -328,7 +298,7 @@ class Brain:
             return
         step = self.new_step("confirm_and_tap", args["target"], plan.label, why)
         step.irreversible = True
-        outcome = await self.ask("confirm", plan.text, ["Yes", "No"], self.limits.confirm_expires)
+        outcome = await self.ask("confirm", plan.text, ["Yes", "No"], CONFIRM_EXPIRES)
         if outcome is None:
             step.status = "cancelled"
             return
@@ -337,11 +307,10 @@ class Brain:
             self.task.answers.append((f"Approve: {args['summary']}", "No"))
             return
         if outcome.status != "approved":
-            correction = (outcome.text or "").strip()
             step.status, step.change = "declined", "the user answered with a change instead"
-            if correction:
-                self.task.corrections.append(correction)
-                self.warnings.append(f"The user changed the request: {correction}")
+            if outcome.text:
+                self.task.corrections.append(outcome.text)
+                self.warnings.append(f"The user changed the request: {outcome.text}")
             return
 
         await self.read_screen()
@@ -360,32 +329,29 @@ class Brain:
             self.task.done_for_good.append(f'approved and tapped "{plan.label}"' + (f", total {total}" if total else ""))
         elif result.status == "unknown":
             self.task.unsure.append(f'tapped "{plan.label}" but the result was lost')
-        elif result.error and result.error.code == "must_see_missing":
-            self.warnings.append("The total changed before the tap; nothing was done. Ask again with the new total.")
         self.after_step(step, before)
 
     async def do_finish(self, args: dict) -> None:
         await self.read_screen()
-        await self.wait_while_loading()
         committed = [step for step in self.task.steps if step.irreversible]
         problem = checks.check_finish(
             args, self.view, goal=self.task.goal, corrections=self.task.corrections, typed=self.task.typed_texts,
             app_label=self.link.apps.get(self.screen.package_name, ""), committed_steps=committed)
         if problem is None:
-            raise TaskEnded("completed", args.get("summary") or "Done.", [str(p) for p in args.get("proof") or []])
+            raise TaskEnded("completed", args["summary"], args["proof"])
         self.task.finish_misses += 1
         if self.task.finish_misses >= 2:
-            raise TaskEnded("unconfirmed", "Could not confirm: " + (args.get("summary") or "the task"))
+            raise TaskEnded("unconfirmed", "Could not confirm: " + args["summary"])
         self.warnings.append(problem)
 
     # ---------- talking to the phone ----------
 
     def command(self, action: str, args: dict) -> Command:
-        return Command(
-            command_id=new_id("c"), action=action,
-            timeout_ms=TIMEOUTS_MS.get(action, 10_000),
-            screen_id=self.screen.screen_id if action in ("tap", "type_text", "scroll") and self.screen else None,
-            target=args.get("target") if action in ("tap", "type_text", "scroll") else None,
+        targeted = action in ("tap", "type_text", "scroll")
+        return new_command(
+            action,
+            screen_id=self.screen.screen_id if targeted else None,
+            target=args.get("target") if targeted else None,
             text=args.get("text") if action == "type_text" else None,
             submit=bool(args.get("submit")) if action == "type_text" else None,
             direction=args.get("direction") if action == "scroll" else None,
@@ -419,14 +385,13 @@ class Brain:
                 "Check the fresh screen for actual results. If it still shows suggestions, tap a visible Search/Go "
                 "button or a matching suggestion instead of retyping; ask the user to press Search if none is available."
             )
-        self.notebook.write("step_result", n=n, command_id=command.command_id, status=result.status, error=error,
-                            settled=result.settled)
+        self.notebook.write("step_result", n=n, command_id=command.command_id, status=result.status, error=error)
         if step:
             step.status = result.status
             if result.status != "ok":
                 step.error = plain_error(error, result.error.message if result.error else "")
         if result.screen is not None:
-            self.set_screen(result.screen, result.settled)
+            self.set_screen(result.screen)
         elif result.status != "ok" or command.action != "read_screen":
             await self.read_screen()
         if result.status == "unknown" and step and not step.irreversible:
@@ -435,20 +400,18 @@ class Brain:
 
     async def read_screen(self) -> None:
         for _ in range(2):
-            result = await self.send(self.command("read_screen", {}), None)
+            result = await self.send(new_command("read_screen"), None)
             if result is not None and result.screen is not None:
                 return
         if self.screen is None:
             raise TaskEnded("failed", "The phone did not send its screen.")
 
-    def set_screen(self, screen, settled: bool) -> None:
+    def set_screen(self, screen) -> None:
         self.screen = screen
-        self.settled = settled
         self.view = screens.render(screen, self.link.apps)
-        self.task.saw_screen(self.view.title or self.view.app)
+        self.task.saw_screen(self.view.app)
 
     async def ask(self, kind: str, text: str, choices, expires_in: int):
-        await self.progress("waiting_for_approval" if kind == "confirm" else "waiting_for_user", text.split("\n")[0])
         self.notebook.write("ask", kind=kind, text=text)
         started = time.monotonic()
         try:
@@ -459,11 +422,7 @@ class Brain:
             return None
         shown = safety.hide_secrets(outcome.text, text) if outcome.text else None
         self.notebook.write("answer", ask_id=outcome.ask_id, status=outcome.status, text=shown)
-        await self.progress("running", "Continuing")
         return outcome
-
-    async def progress(self, state: str, text: str) -> None:
-        await self.link.progress(state, text, len(self.task.steps))
 
     async def pause_for(self, seconds: float) -> bool:
         try:
@@ -474,37 +433,15 @@ class Brain:
         except Interrupted:
             return False
 
-    # ---------- interruptions, budgets, ending ----------
-
-    async def handle_interrupts(self) -> None:
-        for text in self.link.pending_updates():
-            self.task.corrections.append(text)
-            self.task.revision = self.link.revision
-            self.notebook.write("update", text=text, revision=self.task.revision)
-            self.warnings.append(f"The user changed the request: {text}")
-        if self.link.stop_requested:
-            raise TaskEnded("stopped", "Stopped as you asked.")
-        if self.link.pause_requested:
-            await self.progress("paused", "Paused")
-            self.notebook.write("status", to="paused", reason="the user paused")
-            started = time.monotonic()
-            while self.link.pause_requested and not self.link.stop_requested:
-                await self.link.wait_changed()
-            self.user_time += time.monotonic() - started
-            if self.link.stop_requested:
-                raise TaskEnded("stopped", "Stopped as you asked.")
-            self.notebook.write("status", to="running", reason="the user resumed")
-            await self.progress("running", "Resuming")
-            await self.read_screen()
-            await self.handle_interrupts()
+    # ---------- budgets and ending ----------
 
     def check_budgets(self) -> None:
-        limit = self.limits.max_steps + (self.limits.extra_steps_after_commit if self.committed() else 0)
+        limit = MAX_STEPS + (EXTRA_STEPS_AFTER_COMMIT if self.committed() else 0)
         if len(self.task.steps) >= limit:
             raise self.out_of("steps")
-        if (time.monotonic() - self.started - self.user_time) / 60 > self.limits.max_work_minutes:
+        if (time.monotonic() - self.started - self.user_time) / 60 > MAX_WORK_MINUTES:
             raise self.out_of("time")
-        if self.task.bad_total >= self.limits.max_bad_total:
+        if self.task.bad_total >= MAX_BAD_TOTAL:
             raise TaskEnded(self.failed_or_unsure(), "The AI kept giving answers I couldn't use.")
 
     def out_of(self, what: str) -> TaskEnded:
@@ -516,7 +453,7 @@ class Brain:
         self.task.bad_total += 1
         self.notebook.write("bad_reply", reason=reason)
         log.info("task %s: unusable AI reply: %s", self.task.id, reason)
-        if self.task.bad_in_row >= self.limits.max_bad_in_row:
+        if self.task.bad_in_row >= MAX_BAD_IN_ROW:
             raise TaskEnded(self.failed_or_unsure(), f"The AI kept giving answers I couldn't use (last: {reason}).")
 
     def failed_or_unsure(self) -> str:
@@ -528,14 +465,9 @@ class Brain:
     async def end(self, outcome: str, summary: str, proof: list[str] | None) -> Done:
         self.task.status = outcome
         self.task.work_seconds = time.monotonic() - self.started - self.user_time
-        last = self.task.steps[-1] if self.task.steps else None
-        last_action = None
-        if last and (last.irreversible or last.status == "unknown"):
-            last_action = LastAction(label=f'{last.tool} "{last.label}"', status=last.status or "not sent")
         if self.task.unsure and outcome in ("stopped", "failed", "unconfirmed"):
             summary += " Heads-up: " + "; ".join(self.task.unsure) + "."
-        done = Done(task_id=self.task.id, outcome=outcome, summary=summary[:600], proof=proof or None,
-                    last_action=last_action)
+        done = Done(outcome=outcome, summary=summary[:600])
         self.notebook.write("done", outcome=outcome, summary=done.summary, proof=proof)
         self.save()
         log.info("task %s ended: %s — %s", self.task.id, outcome, done.summary)
@@ -549,14 +481,14 @@ class Brain:
 
     def new_step(self, tool: str, target, label: str, why: str) -> Step:
         step = Step(n=len(self.task.steps) + 1, tool=tool, target=target, label=label, why=why,
-                    signature=self.view.signature if self.view else "")
+                    signature=self.view.signature)
         self.task.steps.append(step)
         return step
 
     def after_step(self, step: Step, before) -> None:
         after = self.view
         if step.status == "ok" or step.status == "waited":
-            step.change = step.change or screens.describe_change(before, after, self.settled)
+            step.change = step.change or screens.describe_change(before, after)
         elif not step.change:
             step.change = step.error or step.status
         if step.change.startswith("no change") and step.tool != "wait":
@@ -574,14 +506,14 @@ class Brain:
             raise TaskEnded(self.failed_or_unsure(), "I got stuck: " +
                             "; ".join(f"{s.tool} {s.label}".strip() for s in self.task.steps[-3:]))
         if len(self.signatures) >= 6 and len(set(self.signatures[-6:])) <= 2:
-            titles = " and ".join(dict.fromkeys(self.task.screens_seen[-2:])) or "the same screens"
-            self.warnings.append(f"You are going back and forth between {titles}. Try a different way.")
+            apps = " and ".join(dict.fromkeys(self.task.screens_seen[-2:])) or "the same screens"
+            self.warnings.append(f"You are going back and forth in {apps}. Try a different way.")
             self.want_picture = True
         log.info("step %d: %s %s → %s", step.n, step.tool, step.label, step.change)
 
     def same_place(self, before, label: str) -> int | None:
         after = self.view
-        if after is None or not label:
+        if not label:
             return None
         old = {(line.role, line.label) for line in before.lines}
         new = {(line.role, line.label) for line in after.lines}
@@ -592,19 +524,7 @@ class Brain:
 
     def text_box(self) -> int | None:
         fields = [line for line in self.view.lines if line.node.editable]
-        focused = [line for line in fields if line.node.focused]
-        if focused:
-            return focused[0].index
         return fields[0].index if len(fields) == 1 else None
-
-    async def wait_while_loading(self) -> None:
-        for _ in range(self.limits.loading_retries):
-            loading = self.screen.loading or not self.settled and len(self.view.lines) < 3
-            if not loading:
-                return
-            if not await self.pause_for(self.limits.loading_pause):
-                return
-            await self.read_screen()
 
     def step_message(self, view, image_attached: bool = False) -> str:
         steps = self.task.steps
@@ -614,7 +534,7 @@ class Brain:
             goal=self.task.goal, corrections=self.task.corrections, answers=self.task.answers,
             done_for_good=self.task.done_for_good, unsure=self.task.unsure, notes=self.task.notes,
             apps_line=apps_line, screens_seen=self.task.screens_seen, steps=steps[-8:],
-            total_steps=len(steps), step_limit=self.limits.max_steps, warnings=self.take_warnings(),
+            total_steps=len(steps), step_limit=MAX_STEPS, warnings=self.take_warnings(),
             view_text=view.text, image_attached=image_attached)
 
     def take_warnings(self) -> list[str]:

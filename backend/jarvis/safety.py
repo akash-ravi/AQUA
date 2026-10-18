@@ -23,7 +23,6 @@ class ConfirmPlan:
     must_see: list[str]
     label: str
     role: str
-    signature: str
 
 
 def risky_word(view, index: int) -> str | None:
@@ -41,7 +40,7 @@ def looks_like_search(view, index: int) -> bool:
     node = _node(view, index)
     if node is None:
         return False
-    text = " ".join(filter(None, [node.resource_id, node.hint, node.description, node.class_name, node.text,
+    text = " ".join(filter(None, [node.resource_id, node.description, node.class_name, node.text,
                                   view.by_index[index].label if index in view.by_index else ""]))
     return "search" in text.lower()
 
@@ -50,9 +49,7 @@ def is_secret_field(view, index: int) -> bool:
     node = _node(view, index)
     if node is None:
         return False
-    if node.password:
-        return True
-    text = " ".join(filter(None, [node.hint, node.resource_id, node.description,
+    text = " ".join(filter(None, [node.resource_id, node.description,
                                   view.by_index[index].label if index in view.by_index else ""]))
     return bool(SECRET_FIELD.search(text))
 
@@ -109,13 +106,9 @@ def screen_total(view) -> str | None:
 
 
 def plan_confirm(view, args: dict, unsure: list[str]) -> ConfirmPlan | str:
-    target = args.get("target")
-    summary = (args.get("summary") or "").strip()
-    line = view.by_index.get(target)
-    if line is None:
-        return f"There is no [{target}] on this screen."
-    if not summary:
-        return "confirm_and_tap needs a summary of what will happen."
+    target = args["target"]
+    summary = args["summary"]
+    line = view.by_index[target]
     on_screen = screen_money(view)
     amounts = money(summary)
     missing = [amount for amount in amounts if amount not in on_screen]
@@ -135,7 +128,7 @@ def plan_confirm(view, args: dict, unsure: list[str]) -> ConfirmPlan | str:
         text += f"\nTotal on screen: {total}"
     if any(line.label.lower() in note.lower() for note in unsure):
         text += f"\nAn earlier attempt at “{line.label}” may already have gone through. Check before approving."
-    return ConfirmPlan(text=text, must_see=amounts, label=line.label, role=line.role, signature=view.signature)
+    return ConfirmPlan(text=text, must_see=amounts, label=line.label, role=line.role)
 
 
 def recheck(plan: ConfirmPlan, view) -> int | str:

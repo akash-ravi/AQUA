@@ -7,15 +7,12 @@ from PIL import ImageDraw, ImageFont
 
 PilImage.MAX_IMAGE_PIXELS = 20_000_000
 MAX_SIDE = 1600
-MAX_BASE64 = 11_000_000
 BOX = (233, 30, 99)
 LABEL_TEXT = (255, 255, 255)
 
 
 def marked_picture(image, view) -> bytes | str:
     """The phone's screenshot with every numbered item boxed and labelled, as JPEG bytes (or a plain problem)."""
-    if len(image.data) > MAX_BASE64:
-        return "the picture is too large"
     try:
         raw = base64.b64decode(image.data, validate=True)
     except (binascii.Error, ValueError):

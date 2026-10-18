@@ -5,7 +5,7 @@ Each turn you get the task, the user's answers and changes, your notes, your rec
 
 - First check what your last step did. If it changed nothing, do not repeat it. Try another item, scroll, go back, or ask.
 - Use the app's search before long scrolling.
-- If what you need is not shown and a list says "more below", scroll. If scrolling changes nothing, you reached the end.
+- If what you need is not shown, scroll. If scrolling changes nothing, you reached the end.
 - type_text replaces the text in a box. Use submit=true to run a search.
 - Typing is not proof that a search ran. Check for results on the next screen. If the field still shows suggestions or submission failed, tap a visible Search/Go button or a suggestion matching the query. Do not keep retyping the same query or look for products on the suggestions screen. If no submit control is available, ask the user to press Search on the keyboard.
 - Close popups, ads and offers that get in the way. Say no to extras the user did not ask for.
@@ -25,13 +25,8 @@ Keep "why" under 12 words; the user sees it. Use "remember" only for facts you w
 PLAIN_ERRORS = {
     "stale_screen": "the screen changed before the tap; nothing was done",
     "stale_target": "that item changed or was gone; nothing was done",
-    "bad_target": "that number was not on the screen",
-    "disabled": "that button is disabled",
-    "not_editable": "that is not a text box",
-    "cant_scroll": "that list can't move that way",
     "cant_submit": "text entered, but Enter isn't available here",
     "app_not_found": "that app isn't installed",
-    "must_see_missing": "the total changed before the tap; nothing was done",
     "no_result": "the phone did not answer; it may or may not have happened",
 }
 RETRY_EXAMPLE = 'tap {"why": "open Pepperoni Pizza", "target": 5, "target_text": "Pepperoni Pizza"}'
@@ -41,9 +36,9 @@ def plain_error(code: str, message: str = "") -> str:
     return PLAIN_ERRORS.get(code) or message or code
 
 
-def retry_note(reason: str, example: str = RETRY_EXAMPLE) -> str:
+def retry_note(reason: str) -> str:
     return (f"YOUR LAST REPLY WAS NOT USABLE: {reason.rstrip('. ')}. "
-            f"Reply with exactly one tool call, for example {example}")
+            f"Reply with exactly one tool call, for example {RETRY_EXAMPLE}")
 
 
 def step_line(step) -> str:
@@ -56,9 +51,7 @@ def step_line(step) -> str:
         why = step.why if len(step.why) <= 60 else step.why[:59] + "…"
         parts.append(f"({why})")
     line = " ".join(parts)
-    # task.Step has change/error instead of result
-    result = getattr(step, "result", "") or getattr(step, "error", "") or getattr(step, "change", "")
-    return f"{line} → {result}" if result else line
+    return f"{line} → {step.result}" if step.result else line
 
 
 def build_step_message(*, goal: str, corrections: list[str], answers: list[tuple[str, str]],

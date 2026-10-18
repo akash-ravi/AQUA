@@ -9,13 +9,12 @@ COMMAND_NAMES = {
 ERROR_CODES = {
     "staleScreen": "stale_screen", "nodeNotFound": "stale_target", "actionFailed": "action_failed",
     "appNotFound": "app_not_found", "needsConfirmation": "needs_confirmation", "secureWindow": "secure_window",
-    "stepLimit": "step_limit", "badCommand": "bad_command",
-    "cantSubmit": "cant_submit",
+    "badCommand": "bad_command", "cantSubmit": "cant_submit",
 }
-NOTHING_HAPPENED = {"stale_screen", "stale_target", "app_not_found", "needs_confirmation", "step_limit", "bad_command"}
+NOTHING_HAPPENED = {"stale_screen", "stale_target", "app_not_found", "needs_confirmation", "bad_command"}
 
 
-def message_to_wire(message) -> dict | None:
+def message_to_wire(message) -> dict:
     if isinstance(message, Command):
         return {"type": "command", "id": message.command_id, "name": COMMAND_NAMES[message.action],
                 "args": command_args(message)}
@@ -25,7 +24,7 @@ def message_to_wire(message) -> dict | None:
         return {"type": "done", "summary": message.summary}
     if isinstance(message, ErrorMessage):
         return {"type": "error", "message": message.message}
-    return None
+    raise TypeError(f"{type(message).__name__} is not sent to the phone")
 
 
 def command_args(command: Command) -> dict:
@@ -47,27 +46,26 @@ def result_from_wire(data, command: Command, width: int, height: int) -> Result:
     payload = data.data or {}
     try:
         if command.action == "read_screen":
-            return Result(command_id=data.id, status="ok", settled=True, screen=screen_from_wire(payload, width, height))
+            return Result(command_id=data.id, status="ok", screen=screen_from_wire(payload, width, height))
         if command.action == "screenshot":
-            image = Image(format="png", data=payload["png"], width=payload["width"], height=payload["height"])
-            return Result(command_id=data.id, status="ok", settled=True, image=image)
+            return Result(command_id=data.id, status="ok", image=Image(data=payload["png"]))
         if command.action == "list_apps":
             apps = [App(label=app["label"], package_name=app["package"]) for app in payload["apps"]]
-            return Result(command_id=data.id, status="ok", settled=True, apps=apps)
+            return Result(command_id=data.id, status="ok", apps=apps)
         if command.action == "type_text" and command.submit:
             submitted = payload.get("submitted")
-            return Result(command_id=data.id, status="ok", settled=True,
+            return Result(command_id=data.id, status="ok",
                           submitted=submitted if type(submitted) is bool else None)
     except (KeyError, TypeError, ValidationError):
         return failed_result(command, "bad_result", "the phone sent a result in the wrong shape")
-    return Result(command_id=data.id, status="ok", settled=True)
+    return Result(command_id=data.id, status="ok")
 
 
 def failed_result(command: Command, code: str, message: str) -> Result:
     if command.action == "screenshot" and code == "secure_window":
         code = "screenshot_blocked"
     status = "rejected" if code in NOTHING_HAPPENED else "failed"
-    return Result(command_id=command.command_id, status=status, settled=True,
+    return Result(command_id=command.command_id, status=status,
                   error=ErrorInfo(code=code, message=message))
 
 
