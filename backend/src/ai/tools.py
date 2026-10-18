@@ -17,7 +17,7 @@ class Tool:
     params: tuple[Param, ...]
 
 
-WHY = Param("why", "string", "Short reason the user sees, under 12 words.")
+WHY = Param("why", "string", "What you are doing now, spoken to the user. One short sentence under 8 words.")
 TARGET = Param("target", "integer", "Number of the item on the current screen, like 12 for [12].")
 TARGET_TEXT = Param("target_text", "string", "That item's label as shown on the screen.")
 REMEMBER = Param("remember", "string", "A fact to keep for later steps.", required=False)
@@ -39,16 +39,16 @@ TOOLS: list[Tool] = [
          (WHY, Param("seconds", "integer", "How long to wait, 1 to 10 seconds.", required=False))),
     Tool("look", "Get a picture of the screen when the text is not enough.", (WHY,)),
     Tool("ask_user", "Ask the user a question and wait for the answer.",
-         (Param("question", "string", "The question, short and plain."),
+         (Param("question", "string", "The question, one short direct sentence."),
           Param("choices", "array", "Up to 6 short answers the user can pick.", required=False), REMEMBER)),
     Tool("confirm_and_tap", "Ask the user to approve, then tap a button that can't be undone.",
          (WHY, TARGET, TARGET_TEXT,
           Param("summary", "string", "What will happen, with the items and the total shown on screen."))),
     Tool("finish", "End the task when the current screen proves it is done.",
-         (Param("summary", "string", "What was done, in one or two sentences."),
+         (Param("summary", "string", "What was done, in one short sentence."),
           Param("proof", "array", "1 to 3 short phrases copied exactly from the current screen."))),
-    Tool("give_up", "Stop because the task can't be done, and say why.",
-         (Param("reason", "string", "Why the task can't be finished."),)),
+    Tool("give_up", "Say you're stuck or the task can't be done. The user is asked what to do next.",
+         (Param("reason", "string", "Why you're stuck, in one short sentence."),)),
 ]
 
 def _schema(param: Param) -> dict:

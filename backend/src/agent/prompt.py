@@ -18,11 +18,11 @@ Never type passwords, codes or card numbers. Use ask_user so the user does that 
 
 Anything that cannot be undone, like placing an order, paying, sending, posting, deleting or booking, must use confirm_and_tap, never tap. First check that the cart or message matches the request. The summary must list the items and the exact total shown on screen, for example "Place order at Tony's Pizzeria: 1 Large Pepperoni Pizza, total $31.20". The user approves it first.
 
-Call finish only when the current screen proves the task is done, such as an order confirmation. In proof, copy 1 to 3 short phrases exactly as they appear on screen. Tapping a button is not proof. If you cannot finish, call give_up and say why.
+Call finish only when the current screen proves the task is done, such as an order confirmation. In proof, copy 1 to 3 short phrases exactly as they appear on screen. Tapping a button is not proof. If you are stuck or cannot finish, call give_up and say why in one short sentence; the user is then asked what to do, and their answer shows up under USER CHANGES or USER ANSWERS.
 
 For a request to call someone, the goal is to initiate one call to that exact contact. A fresh outgoing calling/dialing/ringing or in-call screen showing the intended contact is completion evidence. Call finish immediately with that evidence; do not wait for an answer or the conversation to end. Do not redial or hang up to complete the task. If the call outcome is uncertain, inspect or give_up instead of calling again.
 
-Keep "why" under 12 words; the user sees it. Use "remember" only for facts you will need later, like names, addresses, prices, order numbers or the user's choices. On your first step, put a short plan in "remember"."""
+The user hears what you write. "why" is spoken as your status: one short sentence under 8 words saying what you are doing now, like "Opening DoorDash." or "Searching for pizza." Questions, summaries and reasons are spoken too: short, direct sentences, no filler, no apologies. Use "remember" only for facts you will need later, like names, addresses, prices, order numbers or the user's choices. On your first step, put a short plan in "remember"."""
 
 ERROR_DESCRIPTIONS = {
     "stale_screen": "the screen changed before the tap; nothing was done",
@@ -31,11 +31,28 @@ ERROR_DESCRIPTIONS = {
     "app_not_found": "that app isn't installed",
     "no_result": "the phone did not answer; it may or may not have happened",
 }
-RETRY_EXAMPLE = 'tap {"why": "open Pepperoni Pizza", "target": 5, "target_text": "Pepperoni Pizza"}'
+RETRY_EXAMPLE = 'tap {"why": "Opening Pepperoni Pizza.", "target": 5, "target_text": "Pepperoni Pizza"}'
+STATUS_FALLBACKS = {
+    "tap": "Tapping {label}.", "type_text": "Typing.", "scroll": "Scrolling {direction}.", "go_back": "Going back.",
+    "go_home": "Going home.", "open_app": "Opening {label}.", "wait": "Waiting for the screen.",
+    "look": "Looking at the screen.",
+}
+MAX_STATUS_WORDS = 12
 
 
 def describe_error(code: str, message: str = "") -> str:
     return ERROR_DESCRIPTIONS.get(code) or message or code
+
+
+def status_line(tool: str, why: str, label: str = "", direction: str | None = None) -> str:
+    """The short sentence the phone shows and speaks before an action."""
+    line = " ".join(why.split())
+    if not line or len(line.split()) > MAX_STATUS_WORDS:
+        label = label if len(label) <= 40 else label[:39] + "…"
+        line = STATUS_FALLBACKS.get(tool, "Working.").format(label=label, direction=direction or "")
+        line = " ".join(line.split()).replace(" .", ".")
+    line = line[0].upper() + line[1:]
+    return line if line[-1] in ".!?…" else line + "."
 
 
 def retry_note(reason: str) -> str:

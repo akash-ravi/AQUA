@@ -15,6 +15,7 @@ data class OverlayState(
     val questionId: String? = null,
     val question: String? = null,
     val message: String? = null,
+    val status: String? = null,
 ) {
     val acceptsInput: Boolean get() = mode == OverlayMode.IDLE || mode == OverlayMode.WAITING_FOR_USER
 
@@ -25,7 +26,7 @@ data class OverlayState(
             agent.running && agent.question != null -> OverlayState(
                 OverlayMode.WAITING_FOR_USER, agent.question.id, agent.question.text,
             )
-            agent.running -> OverlayState(OverlayMode.PROCESSING, message = agent.message)
+            agent.running -> OverlayState(OverlayMode.PROCESSING, message = agent.message, status = agent.status)
             else -> OverlayState(message = agent.message)
         }
     }

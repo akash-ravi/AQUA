@@ -75,11 +75,12 @@ class PhoneUseService : AccessibilityService() {
                 overlay?.render(it)
                 updateAura()
                 if (it.mode == OverlayMode.WAITING_FOR_USER) voice?.speak(it.question.orEmpty(), ::listen)
+                if (it.mode == OverlayMode.PROCESSING) it.status?.let { status -> voice?.speakIfIdle(status) }
                 if (it.mode != OverlayMode.IDLE) notification.show(when (it.mode) {
                     OverlayMode.PAUSED -> "Jarvis is paused"
                     OverlayMode.PAUSING -> "Jarvis is pausing"
                     OverlayMode.WAITING_FOR_USER -> "Jarvis needs your input"
-                    else -> "Jarvis is controlling the phone"
+                    else -> it.status ?: "Jarvis is controlling the phone"
                 })
             }
         }
@@ -110,7 +111,7 @@ class PhoneUseService : AccessibilityService() {
         return try {
             overlay?.collapse()
             notification.show()
-            showOverlay(openComposer = false)
+            showOverlay(listen = false)
             val executor = CommandExecutor(this, clock,
                 beforeScreenshot = { setCaptureHidden(true); delay(80) },
                 afterScreenshot = { setCaptureHidden(false) })
@@ -151,19 +152,21 @@ class PhoneUseService : AccessibilityService() {
         socket?.resume()
     }
 
-    fun showOverlay(openComposer: Boolean = true) {
+    /** Shows the orb; tapping it opens the text box. With [listen], the mic starts right away. */
+    fun showOverlay(listen: Boolean = true) {
         overlayVisible = true
-        if (openComposer) overlay?.openComposer() else overlay?.show()
+        overlay?.show()
+        overlay?.collapse()
         overlay?.hideForCapture(captureHidden)
         updateAura()
-        if (openComposer) listen()
+        if (listen) listen()
     }
 
     fun hideOverlay() {
         voice?.cancel()
         overlayVisible = false
-        overlay?.close()
-        closeAura()
+        overlay?.dismiss()
+        updateAura()
     }
 
     private fun setCaptureHidden(hidden: Boolean) {
@@ -175,7 +178,7 @@ class PhoneUseService : AccessibilityService() {
     private fun updateAura() {
         if (auraUnavailable) return
         try {
-            aura?.render(OverlayState.from(AgentState.state.value).mode, overlayVisible && !captureHidden, listening)
+            aura?.render(OverlayState.from(AgentState.state.value).mode, overlayVisible, listening, captureHidden)
         } catch (error: RuntimeException) {
             // Decorative UI must not prevent the executor from starting or answering a command.
             auraUnavailable = true

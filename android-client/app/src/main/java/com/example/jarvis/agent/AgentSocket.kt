@@ -93,7 +93,14 @@ class AgentSocket(
             "ask" -> AgentState.ask(Question(message.optString("id"), message.optString("question")))
             "progress" -> when (message.optString("state")) {
                 "paused" -> AgentState.setPaused(true)
-                "running" -> AgentState.setPaused(false)
+                "running" -> {
+                    AgentState.setPaused(false)
+                    val status = message.optString("text")
+                    if (status.isNotBlank()) {
+                        AgentState.log("Jarvis: $status")
+                        AgentState.status(status)
+                    }
+                }
             }
             "done" -> {
                 closeWith(message.optString("summary"),
