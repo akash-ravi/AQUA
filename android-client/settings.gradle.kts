@@ -19,6 +19,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // sherpa-onnx (on-device speech) is only published here.
+        maven("https://jitpack.io") {
+            content { includeGroup("com.github.k2-fsa.sherpa-onnx") }
+        }
     }
 }
 

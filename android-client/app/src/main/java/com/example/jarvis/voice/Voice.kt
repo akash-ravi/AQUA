@@ -2,116 +2,72 @@ package com.example.jarvis.voice
 
 import android.Manifest
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
-import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
-import java.util.Locale
+import kotlin.concurrent.thread
 
-/** Free platform speech: on-device recognition in, the best installed offline voice out. Main thread only. */
+/**
+ * Open-source, on-device voice: Silero VAD + Moonshine in, Kokoro out (see [SpeechModels]).
+ * Public calls and callbacks are on the main thread; audio and inference run on workers.
+ */
 class Voice(
     private val context: Context,
     private val onHeard: (String) -> Unit,
     private val onListening: (Boolean) -> Unit,
 ) {
     private val handler = Handler(Looper.getMainLooper())
-    private var recognizer: SpeechRecognizer? = null
-    private var afterSpeech: () -> Unit = {}
-    private var speechReady = false
-    private val speech: TextToSpeech = TextToSpeech(context) { status ->
-        speechReady = status == TextToSpeech.SUCCESS
-        if (speechReady) useBestVoice()
-    }
-
-    private val recognitionListener = object : RecognitionListener {
-        override fun onResults(results: Bundle?) {
-            finishListening()
-            results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let(onHeard)
-        }
-
-        override fun onError(error: Int) = finishListening()
-        override fun onReadyForSpeech(params: Bundle?) = Unit
-        override fun onBeginningOfSpeech() = Unit
-        override fun onRmsChanged(rmsdB: Float) = Unit
-        override fun onBufferReceived(buffer: ByteArray?) = Unit
-        override fun onEndOfSpeech() = Unit
-        override fun onPartialResults(partialResults: Bundle?) = Unit
-        override fun onEvent(eventType: Int, params: Bundle?) = Unit
-    }
-
-    init {
-        speech.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) = Unit
-
-            override fun onDone(utteranceId: String?) {
-                handler.post {
-                    val next = afterSpeech
-                    afterSpeech = {}
-                    next()
-                }
-            }
-
-            @Deprecated("Deprecated in Java")
-            override fun onError(utteranceId: String?) = Unit
-        })
-    }
+    private val models = SpeechModels(context)
+    private val listener = Listener(models)
+    private val speaker = Speaker(models)
+    private var utterance: Any? = null
 
     fun listen(): Boolean {
         val allowed = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        if (!allowed || !SpeechRecognizer.isRecognitionAvailable(context)) return false
+        if (!allowed) return false
         cancel()
-        val onDevice = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
-        val next = if (onDevice) SpeechRecognizer.createOnDeviceSpeechRecognizer(context) else SpeechRecognizer.createSpeechRecognizer(context)
-        next.setRecognitionListener(recognitionListener)
-        next.startListening(
-            Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM),
-        )
-        recognizer = next
-        onListening(true)
-        return true
+        val started = listener.start { text ->
+            handler.post {
+                onListening(false)
+                text?.let(onHeard)
+            }
+        }
+        if (started) onListening(true)
+        return started
     }
 
     fun speak(text: String, then: () -> Unit = {}) {
-        if (!speechReady || text.isBlank()) { then(); return }
-        afterSpeech = then
-        speech.speak(text.take(TextToSpeech.getMaxSpeechInputLength()), TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_ID)
+        if (text.isBlank()) { then(); return }
+        if (listener.stop()) onListening(false)
+        val token = Any()
+        utterance = token
+        speaker.speak(text) {
+            handler.post {
+                if (utterance !== token) return@post
+                utterance = null
+                then()
+            }
+        }
     }
 
     fun cancel() {
-        speech.stop()
-        afterSpeech = {}
-        if (recognizer != null) finishListening()
+        speaker.stop()
+        utterance = null
+        if (listener.stop()) onListening(false)
     }
 
     fun close() {
         cancel()
-        speech.shutdown()
+        listener.close()
+        speaker.close()
+        // Native models are freed only after the workers stop touching them.
+        thread(name = "jarvis-speech-close") {
+            listener.awaitClosed()
+            speaker.awaitClosed()
+            models.close()
+        }
     }
 
-    private fun finishListening() {
-        recognizer?.destroy()
-        recognizer = null
-        onListening(false)
-    }
-
-    private fun useBestVoice() {
-        val language = Locale.getDefault().language
-        speech.voices.orEmpty()
-            .filter { it.locale.language == language && !it.isNetworkConnectionRequired }
-            .filter { TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in it.features }
-            .maxByOrNull { it.quality }
-            ?.let { speech.setVoice(it) }
-    }
-
-    private companion object {
-        const val UTTERANCE_ID = "jarvis"
-    }
+    /** Current mic or speech loudness, 0..1, for the orb and edge glow. Safe from any thread. */
+    fun level(): Float = maxOf(listener.level, speaker.level())
 }

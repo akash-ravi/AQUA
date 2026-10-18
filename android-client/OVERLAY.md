@@ -11,8 +11,10 @@ the text composer. It can start a task or answer the current question. Send coll
 - **Set default assistant** opens Android's assistant chooser. Choose Jarvis yourself;
   its assistant gesture invokes the text composer. Accessibility must also remain enabled.
 
-The aura pulses while working, becomes steady when waiting/paused, and disappears when
-idle or hidden. Both windows are temporarily hidden before screenshot capture. The aura
+The orb in the panel header and the screen-edge aura are both driven by assistant state and
+live voice loudness: they flow while working, brighten while waiting or listening, slow and dim
+when paused, and swell with your voice or Jarvis's reply. The aura disappears when idle (unless
+listening) or hidden. Both windows are temporarily hidden before screenshot capture. The aura
 is not touchable and cannot take keyboard focus. The panel is shown on demand, not every
 time the accessibility service starts.
 
@@ -51,6 +53,11 @@ alone is not proof of completion.
   `TYPE_ACCESSIBILITY_OVERLAY`. It takes keyboard focus only while editing and releases
   it before the phone resumes acting. The service removes the window when destroyed.
 - `overlay/AuraRing.kt` owns the separate edge-effect window and stops animation when hidden.
+  The soft glow and inner line are rendered once into an alpha mask (rebuilt on size, inset
+  or rotation changes) and tinted each frame with a rotating warm `SweepGradient`. Corner radii
+  come from `Display.getRoundedCorner`, then window insets, then a 32dp fallback.
+- `overlay/OrbView.kt` draws the Siri-style orb: three additive warm blobs and a light core.
+  It animates only while visible, so a hidden or capture-hidden panel costs no frames.
 - `assistant/JarvisAssistantService.kt` provides the system-bound digital assistant service
   and session, registered through `@xml/voice_interaction_service` with `supportsAssist=true`.
   Invoking it opens the existing text overlay (or the app if accessibility is disabled).
@@ -69,12 +76,33 @@ command that was already dispatched, and it cancels a pending question; resuming
 fresh observation and any necessary new approval. A disconnected/terminated session cannot
 be resumed by this version.
 
-## Future voice input
+## Voice
 
-Keep microphone capture and streaming separate from the overlay and executor socket.
-Partial transcripts can fill the draft; the user reviews and submits the final text
-through `AssistantInput`. Add audio session/cancellation handling and microphone permissions
-when voice is implemented. No audio-specific code is needed for the text phase.
+Voice is fully on-device and open source, run through [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx):
+
+| Stage | Model | Why |
+| --- | --- | --- |
+| End of speech | Silero VAD | Ends the turn 0.6 s after you stop talking |
+| Speech to text | Moonshine v2 base, English, quantized | ~0.1 real-time factor; decoding starts at end of speech |
+| Text to speech | Kokoro-82M int8 v0.19, voice `af_bella` (sid 1) | Sentence-by-sentence streaming, so playback starts after the first sentence |
+
+Opening the composer starts listening; the text box stays as a fallback and the mic button
+toggles listening. A heard utterance goes through the same `AssistantInput` routing as typed
+text. Questions are spoken, then the mic reopens; the final result is spoken after the panel
+settles. Listening times out after 8 s without speech.
+
+- `voice/SpeechModels.kt` loads all three models on a background thread when the service
+  connects. Audio recorded before loading finishes is buffered, not dropped.
+- `voice/Listener.kt` records 16 kHz mono with `AudioRecord` and transcribes one utterance.
+- `voice/Speaker.kt` streams Kokoro output into an `AudioTrack` and exposes a loudness
+  envelope aligned to the playback head.
+- The accessibility service is bound with `BIND_INCLUDE_CAPABILITIES`, so it keeps
+  microphone access without a foreground service. `RECORD_AUDIO` is still required.
+
+The models are not in git. The `speechModels` Gradle task downloads pinned, SHA-256-verified
+archives from sherpa-onnx releases into `android-client/.speech-models/` (git-ignored) and
+packages them as uncompressed assets, about 270 MB. The first build needs network. Only
+`arm64-v8a` native libraries are packaged.
 
 ## Validation
 
