@@ -27,6 +27,7 @@ class AgentOverlay(
     private val onContinue: () -> Unit,
     private val onHide: () -> Unit,
     private val onMic: () -> Unit,
+    level: () -> Float,
 ) {
     private val windows = context.getSystemService(WindowManager::class.java)
     private val keyboard = context.getSystemService(InputMethodManager::class.java)
@@ -36,6 +37,10 @@ class AgentOverlay(
     private var attached = false
     private var listening = false
 
+    private val orb = OrbView(context, level).apply {
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        setOnClickListener { setExpanded(!expanded) }
+    }
     private val title = TextView(context).apply {
         setTextColor(BrandColors.Text.toInt())
         textSize = 16f
@@ -75,11 +80,12 @@ class AgentOverlay(
             if (action == EditorInfo.IME_ACTION_SEND) { submit(); true } else false
         }
     }
+    private val mic = button("🎤") { onMic() }
     private val composer = LinearLayout(context).apply {
         gravity = Gravity.CENTER_VERTICAL
         setPadding(0, dp(8), 0, dp(4))
         addView(input, LinearLayout.LayoutParams(0, dp(56), 1f))
-        addView(button("🎤") { onMic() }.apply { contentDescription = "Speak" })
+        addView(mic)
         addView(button("Send") { submit() }.apply {
             setTextColor(BrandColors.Background.toInt())
             backgroundTintList = ColorStateList.valueOf(accent)
@@ -96,6 +102,7 @@ class AgentOverlay(
         }
         val header = LinearLayout(context).apply {
             gravity = Gravity.CENTER_VERTICAL
+            addView(orb, LinearLayout.LayoutParams(dp(44), dp(44)))
             addView(title, LinearLayout.LayoutParams(0, dp(48), 1f))
             addView(button("×") { onHide() }.apply { contentDescription = "Hide assistant" })
         }
@@ -129,16 +136,24 @@ class AgentOverlay(
         if (state.questionId != next.questionId || state.mode != next.mode) input.text.clear()
         state = next
         if (modeChanged && next.mode == OverlayMode.PROCESSING) expanded = false
-        title.text = if (listening) "●  Listening…" else when (next.mode) {
-            OverlayMode.IDLE -> "●  JARVIS"
-            OverlayMode.PROCESSING -> "●  Working…"
-            OverlayMode.WAITING_FOR_USER -> "●  Needs your input"
-            OverlayMode.PAUSING -> "●  Pausing…"
-            OverlayMode.PAUSED -> "●  Paused"
+        orb.mode = next.mode
+        orb.listening = listening
+        title.text = if (listening) "Listening…" else when (next.mode) {
+            OverlayMode.IDLE -> "JARVIS"
+            OverlayMode.PROCESSING -> "Working…"
+            OverlayMode.WAITING_FOR_USER -> "Needs your input"
+            OverlayMode.PAUSING -> "Pausing…"
+            OverlayMode.PAUSED -> "Paused"
         }
         title.contentDescription = "${title.text}. Tap to ${if (expanded) "collapse" else "expand"} assistant"
         prompt.text = next.question ?: next.message ?: "How can I help?"
-        input.hint = if (next.questionId == null) "What should Jarvis do?" else "Your answer"
+        input.hint = when {
+            listening -> "Listening… or type"
+            next.questionId == null -> "What should Jarvis do?"
+            else -> "Your answer"
+        }
+        mic.text = if (listening) "■" else "🎤"
+        mic.contentDescription = if (listening) "Stop listening" else "Speak"
         controls.visibility = if (next.mode == OverlayMode.IDLE) View.GONE else View.VISIBLE
         pause.text = if (next.mode == OverlayMode.PAUSED) "Continue" else "Pause"
         pause.isEnabled = next.mode != OverlayMode.PAUSING

@@ -47,6 +47,7 @@ class PhoneUseService : AccessibilityService() {
     private var aura: AuraRing? = null
     private var auraUnavailable = false
     private var voice: Voice? = null
+    private var listening = false
     private var overlayVisible = false
     private var captureHidden = false
     private var taskGeneration = 0
@@ -64,10 +65,11 @@ class PhoneUseService : AccessibilityService() {
         val display = getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
         val windowContext = createDisplayContext(display)
             .createWindowContext(WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, null)
-        voice = Voice(this, ::submitSpeech) { overlay?.setListening(it) }
+        voice = Voice(this, ::submitSpeech, ::onListeningChanged)
+        val level = { voice?.level() ?: 0f }
         overlay = AgentOverlay(windowContext, ::submitOverlayInput, ::stopTask,
-            ::pauseTask, ::continueTask, ::hideOverlay, ::onMicPressed)
-        aura = AuraRing(windowContext)
+            ::pauseTask, ::continueTask, ::hideOverlay, ::onMicPressed, level)
+        aura = AuraRing(windowContext, level)
         scope.launch {
             AgentState.state.map { OverlayState.from(it) }.distinctUntilChanged().collect {
                 overlay?.render(it)
@@ -173,7 +175,7 @@ class PhoneUseService : AccessibilityService() {
     private fun updateAura() {
         if (auraUnavailable) return
         try {
-            aura?.render(OverlayState.from(AgentState.state.value).mode, overlayVisible && !captureHidden)
+            aura?.render(OverlayState.from(AgentState.state.value).mode, overlayVisible && !captureHidden, listening)
         } catch (error: RuntimeException) {
             // Decorative UI must not prevent the executor from starting or answering a command.
             auraUnavailable = true
@@ -209,7 +211,14 @@ class PhoneUseService : AccessibilityService() {
         OverlayState.from(AgentState.state.value).acceptsInput && voice?.listen() == true
 
     private fun onMicPressed() {
+        if (listening) { voice?.cancel(); return }
         if (!listen()) AgentState.message("Voice input is unavailable. Allow microphone access in the Jarvis app.")
+    }
+
+    private fun onListeningChanged(value: Boolean) {
+        listening = value
+        overlay?.setListening(value)
+        updateAura()
     }
 
     private fun submitSpeech(text: String) {
