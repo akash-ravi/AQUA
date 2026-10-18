@@ -408,6 +408,6 @@ JARVIS/
 
 **[Sparsh Gupta](https://github.com/Sparshg3011)** · **Saatwik Yajaman** · **[Akash Ravi](https://github.com/akash-ravi)**
 
-<sub>Built at USC.</sub>
+<sub>Built at LA Hacks.</sub>
 
 </div>
