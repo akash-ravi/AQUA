@@ -234,7 +234,7 @@ outside the model.
 
 ## Voice that feels like a conversation
 
-- **Fast speech both ways:** [ElevenLabs](https://elevenlabs.io) Scribe v2 Realtime hears you and Flash v2.5
+- **Fast speech both ways:** [ElevenLabs](https://elevenlabs.io) Scribe v2 Realtime hears you and Eleven v4 Turbo
   answers, both streamed straight from the phone. The key stays on your computer; the phone gets single-use tokens.
   If ElevenLabs is unreachable, Aqua still talks through the phone's own voice.
 - **Interruptible duplex:** Aqua speaks only when it matters (questions, the approval summary, the result), in a few casual words, and you can interrupt it to answer.

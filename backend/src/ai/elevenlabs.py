@@ -7,7 +7,7 @@ log = logging.getLogger("jarvis.elevenlabs")
 URL = "https://api.elevenlabs.io/v1/single-use-token/"
 TIMEOUT_SECONDS = 5
 # What the phone opens with each token: realtime speech-to-text, or the text-to-speech WebSocket.
-TOKEN_TYPES = {"listen": "realtime_scribe", "speak": "tts_websocket"}
+TOKEN_TYPES = {"listen": "realtime_scribe", "speak": "ttd_websocket"}
 
 
 class ElevenLabs:

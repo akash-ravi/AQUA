@@ -104,7 +104,7 @@ statuses appear as text. The orb follows the loudness of the audio being played.
 | Stage | Model | Why |
 | --- | --- | --- |
 | Speech to text | Scribe v2 Realtime (`scribe_v2_realtime`), English | ~150 ms; its VAD commits the transcript 1 s after you stop talking |
-| Text to speech | Flash v2.5 (`eleven_flash_v2_5`), 22.05 kHz PCM, default voice | ~75 ms model time; audio plays as it streams in |
+| Text to speech | Eleven v4 Turbo (`eleven_v4_turbo`), 24 kHz PCM, default voice | ~100 ms model time; audio plays as it streams in |
 
 The text-to-speech WebSocket for the next reply opens while you are talking (and after each reply), so
 speaking skips the connection handshake. An unused one closes after 180 s. Recording starts at once and audio
@@ -136,7 +136,7 @@ panel visible can accept a new task while its explanation is being spoken.
 - `voice/VoiceTokens.kt` fetches single-use tokens from the Mac and keeps one of each kind ready.
 - `voice/Listener.kt` records 16 kHz mono PCM16 with `AudioRecord`, owns the session's AEC, and streams
   one utterance to Scribe v2 Realtime in 50 ms chunks.
-- `voice/ElevenSpeaker.kt` streams Flash v2.5 audio into a low-latency `AudioTrack` and keeps the next
+- `voice/ElevenSpeaker.kt` streams Eleven v4 Turbo audio into a low-latency `AudioTrack` and keeps the next
   reply's connection open.
 - `voice/SystemSpeaker.kt` wraps Android `TextToSpeech`, the fallback voice.
 - `voice/VoiceTurn.kt` coordinates overlapping capture/playback, interruption, the no-AEC
