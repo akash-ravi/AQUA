@@ -196,6 +196,8 @@ class Brain:
     async def call_ai(self, message: str, image: bytes | None, retry: str | None):
         started = time.monotonic()
         decision, problem = None, ""
+        if not self.link.pause_requested:
+            await self.link.progress("running", "Thinking…", len(self.task.steps) + 1)
         try:
             decision = await self.link.run_interruptible(
                 self.ai.decide(SYSTEM_PROMPT, message, image=image, retry_note=retry))

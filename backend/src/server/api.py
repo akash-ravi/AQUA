@@ -1,10 +1,12 @@
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import PlainTextResponse
 
 from src.agent.brain import Brain
+from src.agent.prompt import SYSTEM_PROMPT
 from src.agent.task import Notebook, Task
 from src.ai.elevenlabs import TOKEN_TYPES, ElevenLabs
 from src.ai.model import AI
@@ -18,7 +20,13 @@ START_SECONDS = 10.0
 
 
 def create_app(settings: Settings, ai: AI) -> FastAPI:
-    app = FastAPI()
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        warmer = asyncio.create_task(ai.keep_warm(SYSTEM_PROMPT))
+        yield
+        warmer.cancel()
+
+    app = FastAPI(lifespan=lifespan)
     key = settings.elevenlabs_api_key.get_secret_value() if settings.elevenlabs_api_key else ""
     elevenlabs = ElevenLabs(key) if key else None
 

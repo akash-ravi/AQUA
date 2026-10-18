@@ -60,6 +60,22 @@ class AgentOverlay(
         setPadding(dp(8), dp(12), dp(8), dp(12))
         setOnClickListener { setExpanded(!expanded) }
     }
+    /** What Jarvis is doing right now, under the collapsed orb. */
+    private val caption = TextView(context).apply {
+        setTextColor(BrandColors.Muted.toInt())
+        textSize = 12f
+        gravity = Gravity.CENTER
+        maxLines = 2
+        maxWidth = dp(CAPTION_MAX_DP)
+        ellipsize = TextUtils.TruncateAt.END
+        background = GradientDrawable().apply {
+            setColor(BrandColors.Surface.toInt())
+            cornerRadius = dp(12).toFloat()
+        }
+        setPadding(dp(10), dp(4), dp(10), dp(4))
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO // the orb already announces it
+        setOnClickListener { setExpanded(true) }
+    }
     private val stop = button("Stop") { onStop() }.apply { setTextColor(BrandColors.Red.toInt()) }
     private val pause = button("Pause") { if (state.mode == OverlayMode.PAUSED) onContinue() else onPause() }
     private val controls = LinearLayout(context).apply {
@@ -122,15 +138,18 @@ class AgentOverlay(
         cornerRadius = dp(26).toFloat()
         setStroke(dp(1), BrandColors.Border.toInt())
     }
+    private val header = LinearLayout(context).apply {
+        gravity = Gravity.CENTER_VERTICAL
+        addView(orb, LinearLayout.LayoutParams(dp(ORB_DP), dp(ORB_DP)))
+        addView(title, LinearLayout.LayoutParams(0, dp(48), 1f))
+        addView(hide)
+    }
     private val root = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        val header = LinearLayout(context).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            addView(orb, LinearLayout.LayoutParams(dp(ORB_DP), dp(ORB_DP)))
-            addView(title, LinearLayout.LayoutParams(0, dp(48), 1f))
-            addView(hide)
-        }
-        addView(header)
+        addView(header, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT))
+        addView(caption, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER_HORIZONTAL })
         addView(controls)
         addView(promptScroll, LinearLayout.LayoutParams(-1, dp(76)))
         addView(composer, LinearLayout.LayoutParams(-1, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
@@ -207,6 +226,8 @@ class AgentOverlay(
         controls.visibility = if (expanded && next.mode != OverlayMode.IDLE) View.VISIBLE else View.GONE
         pause.text = if (next.mode == OverlayMode.PAUSED) "Continue" else "Pause"
         pause.isEnabled = next.mode != OverlayMode.PAUSING
+        caption.text = title.text
+        caption.visibility = if (!expanded && (listening || next.mode != OverlayMode.IDLE)) View.VISIBLE else View.GONE
         title.visibility = if (expanded) View.VISIBLE else View.GONE
         hide.visibility = if (expanded) View.VISIBLE else View.GONE
         promptScroll.visibility = if (expanded) View.VISIBLE else View.GONE
@@ -261,6 +282,11 @@ class AgentOverlay(
         root.background = if (expanded) panelBackground else null
         root.elevation = if (expanded) dp(12).toFloat() else 0f
         if (expanded) root.setPadding(dp(16), dp(8), dp(16), dp(12)) else root.setPadding(0, 0, 0, 0)
+        // Collapsed, the orb sits centred above the caption; expanded, the header fills the panel.
+        header.layoutParams = (header.layoutParams as LinearLayout.LayoutParams).apply {
+            width = if (expanded) LinearLayout.LayoutParams.MATCH_PARENT else LinearLayout.LayoutParams.WRAP_CONTENT
+            gravity = if (expanded) Gravity.START else Gravity.CENTER_HORIZONTAL
+        }
         orb.layoutParams = orb.layoutParams.apply {
             width = dp(if (expanded) 52 else ORB_DP)
             height = width
@@ -311,6 +337,7 @@ class AgentOverlay(
 
     private companion object {
         const val ORB_DP = 104
+        const val CAPTION_MAX_DP = 240
         const val ENTER_SCALE = 0.8f
         const val EXIT_SCALE = 0.9f
         const val OPEN_SCALE = 0.92f

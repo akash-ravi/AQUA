@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import logging
 import time
@@ -10,6 +11,8 @@ from src.ai.jev import Jev
 from src.ai.tools import TOOLS, tool_schemas
 
 log = logging.getLogger("jarvis.llm")
+
+WARM_EVERY_SECONDS = 270  # just under the 5-minute cache TTL
 
 APPROVAL_PROMPT = ("The user was asked to approve an action that can't be undone. Their spoken reply may be "
                    "misheard. Answer APPROVE only if the reply clearly says yes to exactly this action, with no "
@@ -81,18 +84,7 @@ class AI:
         blocks.append({"type": "text", "text": f"{message}\n{retry_note}" if retry_note else message})
         started = time.monotonic()
         try:
-            response = await self.client.beta.messages.create(
-                model=self.model,
-                max_tokens=16000,
-                system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-                messages=[{"role": "user", "content": blocks}],
-                tools=self.tools,
-                # forced tool_choice returns 400 on Opus 5.5
-                tool_choice={"type": "auto", "disable_parallel_tool_use": True},
-                output_config={"effort": self.effort},
-                betas=["server-side-fallback-2026-07-01"],
-                fallbacks="default",
-            )
+            response = await self.decide_request(system, blocks, max_tokens=16000)
         except anthropic.APIError as error:
             raise _to_ai_error(error)
         ms = int((time.monotonic() - started) * 1000)
@@ -113,6 +105,31 @@ class AI:
         tool, args = normalize_tool_call(call.name, call.input)
         return Decision(tool=tool, args=args, text=text, model=response.model, ms=ms, input_tokens=input_tokens,
                         cached_tokens=cached, output_tokens=usage.output_tokens)
+
+    def decide_request(self, system: str, content: list[dict], *, max_tokens: int):
+        # The warmup must send exactly these settings, or it writes a cache entry decide() never reads.
+        return self.client.beta.messages.create(
+            model=self.model,
+            max_tokens=max_tokens,
+            system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": content}],
+            tools=self.tools,
+            # forced tool_choice returns 400 on Opus 5.5
+            tool_choice={"type": "auto", "disable_parallel_tool_use": True},
+            output_config={"effort": self.effort},
+            betas=["server-side-fallback-2026-07-01"],
+            fallbacks="default",
+        )
+
+    async def keep_warm(self, system: str) -> None:
+        while True:
+            try:
+                response = await self.decide_request(system, [{"type": "text", "text": "warmup"}], max_tokens=0)
+                log.debug("Cache warm: %d written, %d read", response.usage.cache_creation_input_tokens or 0,
+                          response.usage.cache_read_input_tokens or 0)
+            except anthropic.APIError as error:
+                log.warning("Cache warmup failed: %s", error)
+            await asyncio.sleep(WARM_EVERY_SECONDS)
 
     async def approves(self, question: str, reply: str) -> bool:
         if self.jev:
