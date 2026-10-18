@@ -22,7 +22,9 @@ def check_decision(tool: str, args: dict, view, apps: dict[str, str]) -> tuple[d
         wanted = screens.normalize(args["target_text"])
         current = screens.normalize(view.by_index[args["target"]].label)
         if wanted and wanted not in current and current not in wanted:
-            others = [line for line in screens.find_lines(view, args["target_text"]) if line.index != args["target"]]
+            # A text box holding the typed query matches its own suggestions; never redirect a tap onto it.
+            others = [line for line in screens.find_lines(view, args["target_text"])
+                      if line.index != args["target"] and (tool == "type_text" or not line.node.editable)]
             if len(others) == 1:
                 if tool == "confirm_and_tap":
                     return f"target_text doesn't match [{args['target']}]; check the number"
