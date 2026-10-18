@@ -19,6 +19,7 @@ from jarvis.task import is_task_id, list_tasks, task_story
 log = logging.getLogger("jarvis.server")
 
 PROTOCOL = 1
+START_SECONDS = 10.0
 
 
 @dataclass
@@ -39,7 +40,6 @@ def create_app(
     *,
     smoke: bool = False,
     run_task: RunTask | None = None,
-    start_seconds: float = 10.0,
 ) -> FastAPI:
     app = FastAPI()
     runs: dict[str, Run] = {}
@@ -93,7 +93,7 @@ def create_app(
         await websocket.accept()
         link = PhoneLink(websocket)
         try:
-            await handle_phone(link, settings, runs, routine, websocket.client.host if websocket.client else "", start_seconds)
+            await handle_phone(link, settings, runs, routine, websocket.client.host if websocket.client else "")
         except PhoneGone:
             log.info("The phone disconnected.")
         finally:
@@ -108,9 +108,8 @@ async def handle_phone(
     runs: dict[str, Run],
     routine: RunTask | None,
     device_id: str,
-    start_seconds: float,
 ) -> None:
-    start = await wait_for_message(link, ("start",), start_seconds)
+    start = await wait_for_message(link, ("start",), START_SECONDS)
     if start is None:
         return
     if routine is None:
