@@ -105,18 +105,39 @@ step status, questions and the final result. With the system engine, the orb pul
 | Speech to text | Moonshine v2 base, English, quantized | ~0.1 real-time factor; decoding starts at end of speech |
 | Text to speech (fallback) | Kokoro-82M int8 v0.19, voice `af_bella` (sid 1) | Sentence-by-sentence streaming, so playback starts after the first sentence |
 
-Opening the composer starts listening; the text box stays as a fallback and the mic button
+Showing the assistant starts listening; the text box stays as a fallback and the mic button
 toggles listening. A heard utterance goes through the same `AssistantInput` routing as typed
-text. Questions are spoken, then the mic reopens; the final result is spoken after the panel
-settles. Listening times out after 8 s without speech.
+text. While a question is spoken, the mic remains open if Android's acoustic echo cancellation
+(AEC) is enabled for that recording. Silero's speech detection interrupts playback before
+transcription finishes, and the same recording captures the full answer. This is duplex audio;
+Moonshine still returns the final text at end of speech, not partial transcripts.
+
+The microphone uses `VOICE_COMMUNICATION` with a session-bound `AcousticEchoCanceler`.
+If AEC cannot be enabled, Jarvis falls back to speaking the question before opening the mic;
+tapping the mic can still interrupt playback. AEC availability does not guarantee effective
+echo rejection on every device/audio route. Speakerphone, wired/headset, and Bluetooth paths
+need device testing. The app does not change global call mode or force a speaker/Bluetooth route.
+
+Listening times out after 8 s without speech, counting from the end of playback for a spoken
+question. Hiding the assistant, stopping a task, or answering by text cancels recording and
+playback. Answers are scoped to the question being recorded; cancelled callbacks are discarded.
+Input retains the existing task routing: it starts tasks when idle or answers a pending question,
+and does not modify an executing task through arbitrary spoken instructions.
+
+The final result is spoken after the panel settles. Successful task completion still dismisses
+the overlay and leaves the mic off, including after placing a call. A failure that leaves the
+panel visible can accept a new task while its explanation is being spoken.
 
 - `voice/SpeechModels.kt` loads all three models on a background thread when the service
   connects. Audio recorded before loading finishes is buffered, not dropped.
-- `voice/Listener.kt` records 16 kHz mono with `AudioRecord` and transcribes one utterance.
+- `voice/Listener.kt` records 16 kHz mono PCM16 with `AudioRecord`, converts to model floats,
+  owns the session's AEC, and transcribes one utterance.
 - `voice/SystemSpeaker.kt` wraps Android `TextToSpeech`, preferring the best offline English voice.
 - `voice/Speaker.kt` streams Kokoro output into an `AudioTrack` and exposes a loudness
   envelope aligned to the playback head. If Kokoro failed to load it still reports completion,
   so a question reopens the mic and later statuses are not skipped.
+- `voice/VoiceTurn.kt` coordinates overlapping capture/playback, interruption, the no-AEC
+  fallback, and cancellation independently of Android audio APIs.
 - The accessibility service is bound with `BIND_INCLUDE_CAPABILITIES`, so it keeps
   microphone access without a foreground service. `RECORD_AUDIO` is still required.
 
@@ -135,5 +156,19 @@ packages them as uncompressed assets, about 270 MB. The first build needs networ
 
 The full build requires this project's JDK 25 / SDK 37 toolchain. Device checks remain
 for keyboard placement, app switching, Stop, service restart, rotation, and font scaling.
+`VoiceTurnTest` covers interruption before transcription, uninterrupted recording across
+playback completion, the no-AEC fallback, permission/recorder failures, cancellation, and
+stale callbacks. These tests do not verify hardware echo cancellation. On a physical device:
+
+- Let a long question finish without speaking: no self-answer, with the response timeout
+  starting after playback rather than expiring during the question.
+- Interrupt at the beginning, middle, and end of a question, including a short "yes" or "no":
+  playback should stop and the answer's first word should survive transcription.
+- Repeat at high playback volume and with background noise, then test connected headsets.
+  Check that Jarvis never interprets its own question as confirmation.
+- Hide/Stop during speech and recognition, change the pending question, and answer by text:
+  no cancelled answer should be submitted or microphone restarted by an old callback.
+- Complete a call task: the overlay and microphone should stay dismissed during the call.
+
 Dragging/docking, chat history, and process recovery are not implemented;
 the panel can still cover controls near the bottom.

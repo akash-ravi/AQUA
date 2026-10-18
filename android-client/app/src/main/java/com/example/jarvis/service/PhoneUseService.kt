@@ -47,6 +47,8 @@ class PhoneUseService : AccessibilityService() {
     private var aura: AuraRing? = null
     private var auraUnavailable = false
     private var voice: Voice? = null
+    private var spokenQuestionId: String? = null
+    private var speechQuestionId: String? = null
     private var listening = false
     private var overlayVisible = false
     private var captureHidden = false
@@ -74,7 +76,16 @@ class PhoneUseService : AccessibilityService() {
             AgentState.state.map { OverlayState.from(it) }.distinctUntilChanged().collect {
                 overlay?.render(it)
                 updateAura()
-                if (it.mode == OverlayMode.WAITING_FOR_USER) voice?.speak(it.question.orEmpty(), ::listen)
+                val questionId = if (it.mode == OverlayMode.WAITING_FOR_USER) it.questionId else null
+                if (spokenQuestionId != questionId) {
+                    // An answer recorded for one question must never answer a replacement question.
+                    voice?.cancel()
+                    spokenQuestionId = questionId
+                    speechQuestionId = questionId
+                    if (questionId != null && overlayVisible) {
+                        voice?.speak(it.question.orEmpty(), listenForReply = true)
+                    }
+                }
                 if (it.mode == OverlayMode.PROCESSING) it.status?.let { status -> voice?.speakIfIdle(status) }
                 if (it.mode != OverlayMode.IDLE) notification.show(when (it.mode) {
                     OverlayMode.PAUSED -> "Jarvis is paused"
@@ -138,6 +149,8 @@ class PhoneUseService : AccessibilityService() {
 
     fun stopTask() {
         voice?.cancel()
+        spokenQuestionId = null
+        speechQuestionId = null
         ++taskGeneration
         socket?.stop()
         socket = null
@@ -200,6 +213,8 @@ class PhoneUseService : AccessibilityService() {
     fun answerQuestion(questionId: String, text: String) {
         if (AgentState.state.value.question?.id != questionId) return
         voice?.cancel()
+        spokenQuestionId = null
+        speechQuestionId = null
         overlay?.collapse()
         socket?.answer(questionId, text)
         voice?.speak("Got it.")
@@ -213,8 +228,12 @@ class PhoneUseService : AccessibilityService() {
         }
     }
 
-    private fun listen(): Boolean =
-        OverlayState.from(AgentState.state.value).acceptsInput && voice?.listen() == true
+    private fun listen(): Boolean {
+        val state = OverlayState.from(AgentState.state.value)
+        if (!state.acceptsInput) return false
+        speechQuestionId = state.questionId
+        return voice?.listen() == true
+    }
 
     private fun onMicPressed() {
         if (listening) { voice?.cancel(); return }
@@ -228,13 +247,17 @@ class PhoneUseService : AccessibilityService() {
     }
 
     private fun submitSpeech(text: String) {
-        submitOverlayInput(AssistantInput(text, OverlayState.from(AgentState.state.value).questionId))
+        if (!overlayVisible || speechQuestionId != OverlayState.from(AgentState.state.value).questionId) return
+        submitOverlayInput(AssistantInput(text, speechQuestionId))
     }
 
     private fun onTaskFinished(generation: Int, outcome: TaskOutcome, message: String) {
         // WebSocket callbacks may arrive on OkHttp's worker thread.
         scope.launch {
             if (generation != taskGeneration) return@launch
+            voice?.cancel()
+            spokenQuestionId = null
+            speechQuestionId = null
             socket = null
             notification.hide()
             AgentState.finish(outcome, message)
@@ -251,7 +274,7 @@ class PhoneUseService : AccessibilityService() {
                 }
             }
             // hideOverlay() cancels voice, so speak only after the overlay is settled.
-            voice?.speak(message)
+            voice?.speak(message, listenForReply = overlayVisible)
         }
     }
 

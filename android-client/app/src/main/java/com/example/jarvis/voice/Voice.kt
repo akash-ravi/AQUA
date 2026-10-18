@@ -22,49 +22,35 @@ class Voice(
     private val listener = Listener(models)
     private val speaker = Speaker(models)
     private val system = SystemSpeaker(context)
-    private var utterance: Any? = null
-
-    fun listen(): Boolean {
-        val allowed = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        if (!allowed) return false
-        cancel()
-        val started = listener.start { text ->
-            handler.post {
-                onListening(false)
-                text?.let(onHeard)
+    private val output = object : VoiceOutput {
+        override fun speak(text: String, onDone: () -> Unit) {
+            if (!system.speak(text) { completed -> if (completed) onDone() }) {
+                speaker.speak(text, onDone)
             }
         }
-        if (started) onListening(true)
-        return started
-    }
 
-    fun speak(text: String, then: () -> Unit = {}) {
-        if (text.isBlank()) { then(); return }
-        if (listener.stop()) onListening(false)
-        val token = Any()
-        utterance = token
-        fun finish() = handler.post {
-            if (utterance !== token) return@post
-            utterance = null
-            then()
+        override fun stop() {
+            system.stop()
+            speaker.stop()
         }
-        if (system.speak(text) { completed -> if (completed) finish() }) speaker.stop() else speaker.speak(text) { finish() }
     }
+    private val turn = VoiceTurn(listener, output,
+        canListen = { context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED },
+        dispatch = { action -> handler.post { action() } },
+        onHeard = onHeard, onListening = onListening)
+
+    fun listen(): Boolean = turn.listen()
+
+    /** With [listenForReply], the mic stays open during playback when AEC is available. */
+    fun speak(text: String, listenForReply: Boolean = false) = turn.speak(text, listenForReply)
 
     /** Status chatter: skipped while something is already being said, so updates never pile up. */
-    fun speakIfIdle(text: String) {
-        if (utterance == null) speak(text)
-    }
+    fun speakIfIdle(text: String) = turn.speakIfIdle(text)
 
-    fun cancel() {
-        system.stop()
-        speaker.stop()
-        utterance = null
-        if (listener.stop()) onListening(false)
-    }
+    fun cancel() = turn.cancel()
 
     fun close() {
-        cancel()
+        turn.close()
         listener.close()
         system.close()
         speaker.close()

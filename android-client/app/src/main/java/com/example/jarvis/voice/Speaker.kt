@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * Kokoro speech, streamed: each sentence plays as soon as it is synthesized. A per-window
  * loudness envelope is matched to the playback head so visuals follow what is audible.
  */
-internal class Speaker(private val models: SpeechModels) {
+internal class Speaker(private val models: SpeechModels) : VoiceOutput {
     private val worker = Executors.newSingleThreadExecutor { Thread(it, "jarvis-speak") }
     private val generation = AtomicInteger()
     private val envelope = ArrayList<Float>()
@@ -23,7 +23,7 @@ internal class Speaker(private val models: SpeechModels) {
      * [onDone] runs on the worker thread unless this utterance was interrupted, including when
      * the models are missing, so callers never wait forever on speech that cannot play.
      */
-    fun speak(text: String, onDone: () -> Unit) {
+    override fun speak(text: String, onDone: () -> Unit) {
         val id = generation.incrementAndGet()
         worker.execute {
             try {
@@ -35,7 +35,7 @@ internal class Speaker(private val models: SpeechModels) {
         }
     }
 
-    fun stop() {
+    override fun stop() {
         generation.incrementAndGet()
         track?.let { runCatching { it.pause(); it.flush() } }
     }
@@ -45,7 +45,9 @@ internal class Speaker(private val models: SpeechModels) {
         worker.shutdown()
     }
 
-    fun awaitClosed() = worker.awaitTermination(CLOSE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+    fun awaitClosed() {
+        while (!worker.awaitTermination(CLOSE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) Unit
+    }
 
     fun level(): Float {
         val playing = track ?: return 0f
