@@ -52,7 +52,7 @@ internal class ElevenSpeaker(private val tokens: VoiceTokens, private val client
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             alive = false
-            if (playback?.cancelled == false) Log.w(TAG, "Text-to-speech connection failed", t)
+            if (playback?.cancelled == false) Log.w(TAG, "Text-to-speech connection failed (HTTP ${response?.code})", t)
             playback?.end()
         }
 
@@ -240,7 +240,7 @@ internal class ElevenSpeaker(private val tokens: VoiceTokens, private val client
 
     private companion object {
         const val KIND = "speak"
-        const val SAMPLE_RATE = 44100
+        const val SAMPLE_RATE = 24000 // pcm_44100 needs ElevenLabs Pro; 24 kHz works on every plan
         const val IDLE_SECONDS = 180 // ElevenLabs' maximum inactivity_timeout
         const val DRAIN_MARGIN_MS = 40L
         const val DRAIN_LIMIT_MS = 5_000L

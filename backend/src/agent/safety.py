@@ -114,15 +114,6 @@ def action_key(tool: str, args: dict, view) -> str:
     return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
 
 
-def looks_like_search(view, index: int) -> bool:
-    node = _node_at(view, index)
-    if node is None:
-        return False
-    text = " ".join(filter(None, [node.resource_id, node.description, node.class_name, node.text,
-                                  view.by_index[index].label if index in view.by_index else ""]))
-    return "search" in text.lower()
-
-
 def is_secret_field(view, index: int) -> bool:
     node = _node_at(view, index)
     if node is None:
@@ -147,8 +138,6 @@ def check_action(tool: str, args: dict, view) -> str | None:
     if tool == "type_text" and target is not None:
         if is_secret_field(view, target):
             return "Don't generate or type a secret. Use request_secret for this field; the user can speak it or enter it manually."
-        if args.get("submit") and not looks_like_search(view, target):
-            return "Type without submit, then tap the visible Send button. Use confirm_and_tap only if sending costs money."
     # Picture taps skip the screen-text money checks, so anything with an effect is left to the user.
     if tool == "tap_point" and not is_purchase_navigation(args["what"], " ".join(line.label for line in view.lines)) and (
             BLIND_EFFECT.search(args["what"]) or PAYMENT_ACTION.search(args["what"]) or SLIDE_GESTURE.search(args["what"])):
