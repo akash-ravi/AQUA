@@ -1,6 +1,6 @@
 package com.example.jarvis.overlay
 
-import android.accessibilityservice.AccessibilityService
+import android.content.Context
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -20,21 +20,21 @@ import com.example.jarvis.ui.BrandColors
 
 /** Service-owned window. All calls, including state rendering and removal, run on the main thread. */
 class AgentOverlay(
-    private val service: AccessibilityService,
+    private val context: Context,
     private val onInput: (AssistantInput) -> Boolean,
     private val onStop: () -> Unit,
     private val onPause: () -> Unit,
     private val onContinue: () -> Unit,
     private val onHide: () -> Unit,
 ) {
-    private val windows = service.getSystemService(WindowManager::class.java)
-    private val keyboard = service.getSystemService(InputMethodManager::class.java)
+    private val windows = context.getSystemService(WindowManager::class.java)
+    private val keyboard = context.getSystemService(InputMethodManager::class.java)
     private val accent = BrandColors.Orange.toInt()
     private var state = OverlayState()
     private var expanded = false
     private var attached = false
 
-    private val title = TextView(service).apply {
+    private val title = TextView(context).apply {
         setTextColor(BrandColors.Text.toInt())
         textSize = 16f
         letterSpacing = 0.04f
@@ -44,18 +44,18 @@ class AgentOverlay(
     }
     private val stop = button("Stop") { onStop() }.apply { setTextColor(BrandColors.Red.toInt()) }
     private val pause = button("Pause") { if (state.mode == OverlayMode.PAUSED) onContinue() else onPause() }
-    private val controls = LinearLayout(service).apply {
+    private val controls = LinearLayout(context).apply {
         gravity = Gravity.END
         addView(pause)
         addView(stop)
     }
-    private val prompt = TextView(service).apply {
+    private val prompt = TextView(context).apply {
         setTextColor(BrandColors.Muted.toInt())
         textSize = 14f
         setPadding(dp(8), dp(8), dp(8), dp(8))
     }
-    private val promptScroll = ScrollView(service).apply { addView(prompt) }
-    private val input = EditText(service).apply {
+    private val promptScroll = ScrollView(context).apply { addView(prompt) }
+    private val input = EditText(context).apply {
         setTextColor(BrandColors.Text.toInt())
         setHintTextColor(BrandColors.Muted.toInt())
         background = GradientDrawable().apply {
@@ -73,7 +73,7 @@ class AgentOverlay(
             if (action == EditorInfo.IME_ACTION_SEND) { submit(); true } else false
         }
     }
-    private val composer = LinearLayout(service).apply {
+    private val composer = LinearLayout(context).apply {
         gravity = Gravity.CENTER_VERTICAL
         setPadding(0, dp(8), 0, dp(4))
         addView(input, LinearLayout.LayoutParams(0, dp(56), 1f))
@@ -82,7 +82,7 @@ class AgentOverlay(
             backgroundTintList = ColorStateList.valueOf(accent)
         })
     }
-    private val root = LinearLayout(service).apply {
+    private val root = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(16), dp(8), dp(16), dp(12))
         elevation = dp(12).toFloat()
@@ -91,7 +91,7 @@ class AgentOverlay(
             cornerRadius = dp(26).toFloat()
             setStroke(dp(1), BrandColors.Border.toInt())
         }
-        val header = LinearLayout(service).apply {
+        val header = LinearLayout(context).apply {
             gravity = Gravity.CENTER_VERTICAL
             addView(title, LinearLayout.LayoutParams(0, dp(48), 1f))
             addView(button("×") { onHide() }.apply { contentDescription = "Hide assistant" })
@@ -190,7 +190,7 @@ class AgentOverlay(
         if (onInput(event)) input.text.clear()
     }
 
-    private fun button(label: String, click: () -> Unit) = Button(service).apply {
+    private fun button(label: String, click: () -> Unit) = Button(context).apply {
         text = label
         isAllCaps = false
         setTextColor(accent)
@@ -200,5 +200,5 @@ class AgentOverlay(
         setOnClickListener { click() }
     }
 
-    private fun dp(value: Int) = (value * service.resources.displayMetrics.density).toInt()
+    private fun dp(value: Int) = (value * context.resources.displayMetrics.density).toInt()
 }
