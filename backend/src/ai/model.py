@@ -14,6 +14,11 @@ log = logging.getLogger("jarvis.llm")
 APPROVAL_PROMPT = ("The user was asked to approve an action that can't be undone. Their spoken reply may be "
                    "misheard. Answer APPROVE only if the reply clearly says yes to exactly this action, with no "
                    "changes or conditions. Otherwise answer NO. Answer with one word.")
+CHAT_PROMPT = ("You are Jarvis, a voice assistant that can also operate the user's Android phone. The user said "
+               "something that isn't a phone task; it came from speech and may be misheard. Be super chill, like a "
+               "laid-back friend texting back: lowercase vibe, a few words, slang is fine, never formal, never "
+               "eager, no lists or markdown. \"yo what's up\" not \"Hello! How can I help you today?\". "
+               "If it makes no sense, just go \"huh? say that again\".")
 
 
 @dataclass
@@ -126,6 +131,21 @@ class AI:
             raise _to_ai_error(error)
         text = "".join(block.text for block in response.content if block.type == "text")
         return text.strip().upper().startswith("APPROVE")
+
+    async def chat(self, said: str) -> str:
+        try:
+            response = await self.client.beta.messages.create(
+                model=self.model,
+                max_tokens=2000,
+                system=CHAT_PROMPT,
+                messages=[{"role": "user", "content": said}],
+                output_config={"effort": "low"},
+                betas=["server-side-fallback-2026-07-01"],
+                fallbacks="default",
+            )
+        except anthropic.APIError as error:
+            raise _to_ai_error(error)
+        return "".join(block.text for block in response.content if block.type == "text").strip()
 
 
 def normalize_tool_call(tool: str, args: dict) -> tuple[str, dict]:

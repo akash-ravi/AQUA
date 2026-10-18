@@ -49,6 +49,8 @@ TOOLS: list[Tool] = [
     Tool("finish", "End the task when the current screen proves it is done.",
          (Param("summary", "string", "What was done, spoken aloud. A few casual words, like \"Done, pizza's on the way.\""),
           Param("proof", "array", "1 to 3 short phrases copied exactly from the current screen."))),
+    Tool("reply", "Answer a request that is not a phone task, like a greeting or a question. This ends the task.",
+         (Param("text", "string", "Your answer, spoken aloud. Super chill and short, like \"yo, not much. you?\""),)),
     Tool("give_up", "Say you're stuck or the task can't be done. The user is asked what to do next.",
          (Param("reason", "string", "Why you're stuck, spoken aloud. A few casual words."),)),
 ]

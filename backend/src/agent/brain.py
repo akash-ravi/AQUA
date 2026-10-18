@@ -129,13 +129,20 @@ class Brain:
             self.log_timing()
 
     async def screen_out_non_tasks(self) -> None:
-        """Misheard speech ("It was.", "Yep.") ends here instead of costing a run and a clarifying question."""
+        """Small talk and misheard speech get a quick spoken answer instead of costing a phone run."""
         started = time.monotonic()
         likelihood = await self.ai.phone_task_likelihood(self.task.goal)
         self.timing.ai += time.monotonic() - started
         self.notebook.write("intake", phone_task=round(likelihood, 3), ms=round((time.monotonic() - started) * 1000))
-        if likelihood < NOT_A_TASK_BELOW:
-            raise TaskEnded("needs_user", f"I heard \"{self.task.goal}\" but not a task. Say it again?")
+        if likelihood >= NOT_A_TASK_BELOW:
+            return
+        started = time.monotonic()
+        try:
+            answer = await self.ai.chat(self.task.goal)
+        except AIError:
+            answer = ""
+        self.timing.ai += time.monotonic() - started
+        raise TaskEnded("needs_user", answer or f"I heard \"{self.task.goal}\" but not a task. Say it again?")
 
     async def decide_next_action(self):
         view = self.view
@@ -208,6 +215,8 @@ class Brain:
     def validate_decision(self, tool: str, args: dict, view):
         if self.has_committed_action() and len(self.task.steps) >= self.step_limit and tool not in POST_COMMIT_TOOLS:
             return "only checking is left: scroll, wait, finish or give_up"
+        if tool == "reply" and self.task.steps:
+            return "reply is only for requests that aren't phone tasks; use finish or give_up"
         checked = checks.check_decision(tool, args, view, self.link.apps)
         if isinstance(checked, str):
             return checked
@@ -235,6 +244,8 @@ class Brain:
             await self.handle_secret_entry(args)
         elif tool == "finish":
             await self.handle_finish(args)
+        elif tool == "reply":
+            raise TaskEnded("needs_user", args["text"])
         elif tool == "give_up":
             if self.task.rejected_finishes or self.task.uncertain_actions:
                 await self.handle_finish({"summary": args["reason"], "proof": []})
