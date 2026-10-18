@@ -92,13 +92,18 @@ be resumed by this version.
 
 ## Voice
 
-Voice is fully on-device and open source, run through [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx):
+Listening is on-device and open source, run through [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx).
+Replies use the phone's own text-to-speech engine (Google's on Pixel), which starts talking within
+a few hundred milliseconds; Kokoro is the fallback when no system engine with an English voice is
+usable. The manifest declares the `TTS_SERVICE` query, without which Android 11+ hides the engine.
+Jarvis says "On it." as soon as a task starts and "Got it." after an answer, then speaks each
+step status, questions and the final result. With the system engine, the orb pulses on each word.
 
 | Stage | Model | Why |
 | --- | --- | --- |
 | End of speech | Silero VAD | Ends the turn 0.6 s after you stop talking |
 | Speech to text | Moonshine v2 base, English, quantized | ~0.1 real-time factor; decoding starts at end of speech |
-| Text to speech | Kokoro-82M int8 v0.19, voice `af_bella` (sid 1) | Sentence-by-sentence streaming, so playback starts after the first sentence |
+| Text to speech (fallback) | Kokoro-82M int8 v0.19, voice `af_bella` (sid 1) | Sentence-by-sentence streaming, so playback starts after the first sentence |
 
 Opening the composer starts listening; the text box stays as a fallback and the mic button
 toggles listening. A heard utterance goes through the same `AssistantInput` routing as typed
@@ -108,8 +113,10 @@ settles. Listening times out after 8 s without speech.
 - `voice/SpeechModels.kt` loads all three models on a background thread when the service
   connects. Audio recorded before loading finishes is buffered, not dropped.
 - `voice/Listener.kt` records 16 kHz mono with `AudioRecord` and transcribes one utterance.
+- `voice/SystemSpeaker.kt` wraps Android `TextToSpeech`, preferring the best offline English voice.
 - `voice/Speaker.kt` streams Kokoro output into an `AudioTrack` and exposes a loudness
-  envelope aligned to the playback head.
+  envelope aligned to the playback head. If Kokoro failed to load it still reports completion,
+  so a question reopens the mic and later statuses are not skipped.
 - The accessibility service is bound with `BIND_INCLUDE_CAPABILITIES`, so it keeps
   microphone access without a foreground service. `RECORD_AUDIO` is still required.
 

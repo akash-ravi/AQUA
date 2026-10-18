@@ -120,6 +120,8 @@ class PhoneUseService : AccessibilityService() {
             }
             socket = agentSocket
             agentSocket.start(task, deviceInfo())
+            // Answer at once; the first step status takes a model call to arrive.
+            voice?.speak("On it.")
             true
         } catch (error: RuntimeException) {
             Log.e("JarvisTask", "Task startup failed", error)
@@ -200,6 +202,7 @@ class PhoneUseService : AccessibilityService() {
         voice?.cancel()
         overlay?.collapse()
         socket?.answer(questionId, text)
+        voice?.speak("Got it.")
     }
 
     private fun submitOverlayInput(input: AssistantInput): Boolean {
