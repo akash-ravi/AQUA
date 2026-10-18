@@ -26,8 +26,16 @@ time the accessibility service starts.
   `TYPE_ACCESSIBILITY_OVERLAY`. It takes keyboard focus only while editing and releases
   it before the phone resumes acting. The service removes the window when destroyed.
 - `overlay/AuraRing.kt` owns the separate edge-effect window and stops animation when hidden.
-- `AssistantActivity` handles `ACTION_ASSIST`. No microphone or voice service is required
-  for the text-only assistant entry point.
+- `assistant/JarvisAssistantService.kt` provides the system-bound digital assistant service
+  and session, registered through `@xml/voice_interaction_service` with `supportsAssist=true`.
+  Invoking it opens the existing text overlay (or the app if accessibility is disabled).
+  `AssistantActivity` remains an `ACTION_ASSIST` entry point. Neither path records audio.
+
+After installing the updated APK, open **Settings → Apps → Default apps → Digital assistant app**
+and choose Jarvis. The app's **Set default assistant** button opens assistant settings rather
+than requesting the assistant role through a dialog. If Jarvis is absent, verify the installed
+APK contains `JarvisAssistantService` and its `android.voice_interaction` metadata; rebuilding
+from an older branch will not include this registration. Pixel 9a / Android 17 validation is pending.
 
 Deploy the backend and Android changes together: the executor protocol now accepts
 `{"type":"pause"}` and `{"type":"resume"}` and reports acknowledged state using
