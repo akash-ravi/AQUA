@@ -66,8 +66,8 @@ Hundreds of millions of people can't do all three, and every year more of daily 
 > buttons hard to hit. Her prescription refill, her grocery order and video calls with her grandkids are all
 > in apps she can barely use. Every time an app updates, she has to call her daughter for help.
 >
-> With Jarvis, Ruth just says *"Reorder my groceries from last week."* Jarvis says each step out loud, asks her
-> one simple question when it needs to, reads back the exact items and total, and only orders when she says
+> With Jarvis, Ruth just says *"Reorder my groceries from last week."* Jarvis shows each step in big, clear text,
+> asks her one simple question out loud when it needs to, reads back the exact items and total, and only orders when she says
 > **"Yes."** For the first time in years, she can do it herself.
 >
 > <sub>Ruth is an illustrative persona.</sub>
@@ -80,7 +80,7 @@ Hundreds of millions of people can't do all three, and every year more of daily 
 **Today:** screen readers read the screen one item at a time. A single checkout can take dozens of swipes, and
 an unlabeled button is a dead end.
 
-**With Jarvis:** say the goal, not the swipes. Every step is spoken in a few words. When an icon has no label,
+**With Jarvis:** say the goal, not the swipes. Jarvis speaks at the moments that matter: its questions, the exact order before you approve it, and the result. When an icon has no label,
 Jarvis **looks at the screenshot** to work out what it is.
 
 </td>
@@ -140,7 +140,7 @@ because one app is too hard.
 
 | If you… | Jarvis… |
 |---|---|
-| **can't see the screen** | reads it for you through Android's accessibility layer, says every step out loud, and asks its questions by voice |
+| **can't see the screen** | reads it for you through Android's accessibility layer, speaks its questions, the order summary and the result, and takes your answers by voice |
 | **can't tap or type precisely** | does every tap, swipe and keystroke itself, in any app |
 | **meet an unlabeled icon** | takes a screenshot with numbered boxes drawn on it and works out what the icon does |
 | **worry about mistakes or scams** | won't order, pay, send or delete without your spoken Yes, double-checks that Yes, and ignores instructions written on screen |
@@ -153,7 +153,7 @@ because one app is too hard.
 ## ✨ What Jarvis does
 
 You say what you want. Jarvis works out the steps and drives the phone itself. You can watch an animated orb
-and a glow around the screen edge, and hear it say what it's doing.
+and a glow around the screen edge, read a short status line, and hear it when it needs you.
 
 | | |
 |---|---|
@@ -171,7 +171,7 @@ and a glow around the screen edge, and hear it say what it's doing.
 
 <div align="center">
 <img src="docs/readme/run.svg" alt="A sample run: open DoorDash, search, pick Large, add to cart, ask before ordering, finish with proof." width="100%"/>
-<br/><sub>A sample run of the DoorDash test. Each status line is spoken aloud while it works.</sub>
+<br/><sub>A sample run of the DoorDash test. Status lines appear on screen as it works. Questions, the approval and the result are spoken.</sub>
 </div>
 
 <!-- Demo video: drop a screen recording here, e.g.
@@ -220,10 +220,11 @@ outside the model.
 
 <table>
 <tr><td>🧾 <b>Approval with receipts</b></td><td>Irreversible buttons (order, pay, send, post, delete, book…) are caught by code, not left to the model's judgment. The approval prompt has to name the items and the <b>exact total shown on screen</b>.</td></tr>
-<tr><td>👂 <b>Double-checked "yes"</b></td><td>Spoken replies can be misheard, so a second, separate model call has to agree that your reply clearly approves <i>exactly this</i> action, with no changes or conditions.</td></tr>
+<tr><td>👂 <b>Double-checked "yes"</b></td><td>Spoken replies can be misheard, so a second, separate check (the Jev classifier when configured, otherwise Claude) has to agree that your reply clearly approves <i>exactly this</i> action, with no changes or conditions.</td></tr>
 <tr><td>🧱 <b>Prompt-injection resistant</b></td><td>Screen text is treated as <b>data, never instructions</b>. A sneaky "ignore your task and…" in a message or an ad is just text on a screen.</td></tr>
 <tr><td>🔑 <b>Secrets stay yours</b></td><td>Jarvis refuses to type passwords, codes or card numbers. You type them, and it waits. Secret fields are redacted from logs.</td></tr>
 <tr><td>📸 <b>Proof or it didn't happen</b></td><td><code>finish</code> is rejected unless its proof phrases appear <b>word for word</b> on the current screen and aren't just an echo of what it typed.</td></tr>
+<tr><td>🎯 <b>Screens out noise</b></td><td>Speech that clearly isn't a phone task, like a stray fragment or small talk, is caught before Jarvis touches anything.</td></tr>
 <tr><td>⏱️ <b>Hard budgets</b></td><td>50 steps, 80 model calls, 15 minutes per task. When it's stuck, it stops and asks you instead of thrashing.</td></tr>
 <tr><td>⏸️ <b>You're in charge</b></td><td>Pause, Stop or change the task mid-run. Corrections are added to the plan ("newest wins").</td></tr>
 <tr><td>📓 <b>Full audit trail</b></td><td>Every event is written to a per-task JSONL notebook and <code>fsync</code>ed <b>before</b> each command is sent, so even a crash leaves a complete record.</td></tr>
@@ -236,7 +237,7 @@ outside the model.
 - **On-device speech recognition:** [Moonshine](https://github.com/usefulsensors/moonshine) ASR with Silero VAD,
   running locally through [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). The models are pinned and
   SHA-256 verified at build time. Your voice never leaves the phone.
-- **Interruptible duplex:** Jarvis speaks its status and questions aloud, and you can talk over it to answer.
+- **Interruptible duplex:** Jarvis speaks only when it matters (questions, the approval summary, the result), in a few casual words, and you can interrupt it to answer.
 - **It feels alive:** a Gemini-style screen-edge aura and a Siri-style orb respond to its state and to the live
   loudness of your voice. They flow while it works, brighten while it listens, and dim when paused.
 - **Works as the system assistant:** set Jarvis as Android's default assistant and call it up from any app with
@@ -270,7 +271,7 @@ sequenceDiagram
         J->>C: task + notes + steps + SCREEN NOW
         C-->>J: one tool call, e.g. tap [12] "Add to cart"
         J->>J: guardrails check
-        J->>P: progress "Adding the pizza to cart." 🔊
+        J->>P: progress "Adding the pizza to cart."
         J->>P: command tap [12]
         P-->>J: result + new screen
         J->>J: what changed?
@@ -332,7 +333,7 @@ cp .env.example .env              # add ANTHROPIC_API_KEY
 .venv/bin/jarvis                  # serves ws://0.0.0.0:8000/agent
 ```
 
-`JARVIS_MODEL` (default `claude-opus-5-5`) and `JARVIS_EFFORT` (default `medium`) are set in `.env`.
+`JARVIS_MODEL` (default `claude-opus-5-5`) and `JARVIS_EFFORT` (default `low`) are set in `.env`.
 To use the dashboard: `pip install -e '.[dashboard]' && streamlit run dashboard.py`.
 
 </details>

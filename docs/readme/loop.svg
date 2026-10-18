@@ -121,7 +121,7 @@
   <line x1="700" y1="428" x2="1232" y2="428" stroke="#614036"/>
   <g class="mono" font-size="14.5">
     <text x="724" y="458" fill="#FF6B35" class="line" style="animation-delay:2.6s">→ tap [12] "Add to cart"</text>
-    <text x="724" y="484" fill="#CCADA0" class="line" style="animation-delay:3s">  why: "Adding the pizza to cart."  ← spoken aloud</text>
+    <text x="724" y="484" fill="#CCADA0" class="line" style="animation-delay:3s">  why: "Adding the pizza to cart."  ← shown on screen</text>
   </g>
 
   <text x="700" y="550" class="sans" font-size="15" fill="#CCADA0">Plain text first, so each turn is fast and cheap. A screenshot is sent only</text>

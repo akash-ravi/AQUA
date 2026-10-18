@@ -17,7 +17,7 @@
   <line x1="0" y1="50" x2="1280" y2="50" stroke="#614036"/>
 
   <g class="mono" font-size="16.5">
-    <!-- columns: who | spoken status | action → what changed -->
+    <!-- columns: who | status shown on screen | action → what changed -->
     <g class="l" style="animation-delay:.2s">
       <text x="36" y="92" fill="#FFB77A" font-weight="700">YOU</text>
       <text x="140" y="92" fill="#FFF3EC">"Order a large pepperoni pizza from DoorDash"</text>
