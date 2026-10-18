@@ -20,6 +20,8 @@ Anything that cannot be undone, like placing an order, paying, sending, posting,
 
 Call finish only when the current screen proves the task is done, such as an order confirmation. In proof, copy 1 to 3 short phrases exactly as they appear on screen. Tapping a button is not proof. If you cannot finish, call give_up and say why.
 
+For a request to call someone, the goal is to initiate one call to that exact contact. A fresh outgoing calling/dialing/ringing or in-call screen showing the intended contact is completion evidence. Call finish immediately with that evidence; do not wait for an answer or the conversation to end. Do not redial or hang up to complete the task. If the call outcome is uncertain, inspect or give_up instead of calling again.
+
 Keep "why" under 12 words; the user sees it. Use "remember" only for facts you will need later, like names, addresses, prices, order numbers or the user's choices. On your first step, put a short plan in "remember"."""
 
 ERROR_DESCRIPTIONS = {

@@ -12,10 +12,23 @@ import com.example.jarvis.agent.AgentSocket
 import com.example.jarvis.agent.AgentState
 import com.example.jarvis.device.CommandExecutor
 import com.example.jarvis.device.UiActivityClock
+import com.example.jarvis.overlay.AgentOverlay
+import com.example.jarvis.overlay.AuraRing
+import com.example.jarvis.overlay.AssistantInput
+import com.example.jarvis.overlay.OverlayState
+import com.example.jarvis.overlay.OverlayMode
+import com.example.jarvis.overlay.OverlaySubmission
+import com.example.jarvis.overlay.routeInput
+import com.example.jarvis.voice.Voice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import org.json.JSONObject
 
 class PhoneUseService : AccessibilityService() {
@@ -24,19 +37,51 @@ class PhoneUseService : AccessibilityService() {
     private val clock = UiActivityClock()
     private val notification by lazy { TaskNotification(this) }
     private var socket: AgentSocket? = null
+    private var overlay: AgentOverlay? = null
+    private var aura: AuraRing? = null
+    private var voice: Voice? = null
+    private var overlayVisible = false
+    private var captureHidden = false
+    private var taskGeneration = 0
 
     private val stopReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) = stopTask()
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == TaskNotification.ACTION_SHOW) showOverlay() else stopTask()
+        }
     }
 
     override fun onServiceConnected() {
         instance = this
-        registerReceiver(stopReceiver, IntentFilter(TaskNotification.ACTION_STOP), RECEIVER_NOT_EXPORTED)
+        val filter = IntentFilter(TaskNotification.ACTION_STOP).apply { addAction(TaskNotification.ACTION_SHOW) }
+        registerReceiver(stopReceiver, filter, RECEIVER_NOT_EXPORTED)
+        voice = Voice(this, ::submitSpeech) { overlay?.setListening(it) }
+        overlay = AgentOverlay(this, ::submitOverlayInput, ::stopTask,
+            ::pauseTask, ::continueTask, ::hideOverlay, ::onMicPressed)
+        aura = AuraRing(this)
+        scope.launch {
+            AgentState.state.map { OverlayState.from(it) }.distinctUntilChanged().collect {
+                overlay?.render(it)
+                updateAura()
+                if (it.mode == OverlayMode.WAITING_FOR_USER) voice?.speak(it.question.orEmpty(), ::listen)
+                if (it.mode != OverlayMode.IDLE) notification.show(when (it.mode) {
+                    OverlayMode.PAUSED -> "Jarvis is paused"
+                    OverlayMode.PAUSING -> "Jarvis is pausing"
+                    OverlayMode.WAITING_FOR_USER -> "Jarvis needs your input"
+                    else -> "Jarvis is controlling the phone"
+                })
+            }
+        }
     }
 
     override fun onDestroy() {
         instance = null
         stopTask()
+        overlay?.close()
+        overlay = null
+        aura?.close()
+        aura = null
+        voice?.close()
+        voice = null
         unregisterReceiver(stopReceiver)
         scope.cancel()
         super.onDestroy()
@@ -47,24 +92,102 @@ class PhoneUseService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     fun startTask(task: String) {
+        overlay?.collapse()
         stopTask()
         AgentState.begin(task)
         notification.show()
-        val agentSocket = AgentSocket(BuildConfig.AGENT_URL, CommandExecutor(this, clock), scope, ::onTaskFinished)
+        showOverlay(openComposer = false)
+        val generation = ++taskGeneration
+        val executor = CommandExecutor(this, clock,
+            beforeScreenshot = { setCaptureHidden(true); delay(80) },
+            afterScreenshot = { setCaptureHidden(false) })
+        val agentSocket = AgentSocket(BuildConfig.AGENT_URL, executor, scope) {
+            onTaskFinished(generation)
+        }
         socket = agentSocket
         agentSocket.start(task, deviceInfo())
     }
 
     fun stopTask() {
+        voice?.cancel()
+        ++taskGeneration
         socket?.stop()
         socket = null
-    }
-
-    fun answerQuestion(questionId: String, text: String) = socket?.answer(questionId, text)
-
-    private fun onTaskFinished() {
         notification.hide()
         AgentState.end()
+        AgentState.message("Stopped")
+    }
+
+    fun pauseTask() {
+        socket?.pause()
+    }
+
+    fun continueTask() {
+        overlay?.collapse()
+        socket?.resume()
+    }
+
+    fun showOverlay(openComposer: Boolean = true) {
+        overlayVisible = true
+        if (openComposer) overlay?.openComposer() else overlay?.show()
+        overlay?.hideForCapture(captureHidden)
+        updateAura()
+        if (openComposer) listen()
+    }
+
+    fun hideOverlay() {
+        voice?.cancel()
+        overlayVisible = false
+        overlay?.close()
+        aura?.close()
+    }
+
+    private fun setCaptureHidden(hidden: Boolean) {
+        captureHidden = hidden
+        overlay?.hideForCapture(hidden)
+        updateAura()
+    }
+
+    private fun updateAura() {
+        aura?.render(OverlayState.from(AgentState.state.value).mode, overlayVisible && !captureHidden)
+    }
+
+    fun answerQuestion(questionId: String, text: String) {
+        if (AgentState.state.value.question?.id != questionId) return
+        voice?.cancel()
+        overlay?.collapse()
+        socket?.answer(questionId, text)
+    }
+
+    private fun submitOverlayInput(input: AssistantInput): Boolean {
+        return when (val submission = routeInput(OverlayState.from(AgentState.state.value), input)) {
+            is OverlaySubmission.StartTask -> { startTask(submission.text); true }
+            is OverlaySubmission.Answer -> { answerQuestion(submission.questionId, submission.text); true }
+            null -> false
+        }
+    }
+
+    private fun listen(): Boolean =
+        OverlayState.from(AgentState.state.value).acceptsInput && voice?.listen() == true
+
+    private fun onMicPressed() {
+        if (!listen()) AgentState.message("Voice input is unavailable. Allow microphone access in the Jarvis app.")
+    }
+
+    private fun submitSpeech(text: String) {
+        submitOverlayInput(AssistantInput(text, OverlayState.from(AgentState.state.value).questionId))
+    }
+
+    private fun onTaskFinished(generation: Int) {
+        // WebSocket callbacks may arrive on OkHttp's worker thread.
+        scope.launch {
+            if (generation != taskGeneration) return@launch
+            socket = null
+            notification.hide()
+            AgentState.end()
+            hideOverlay()
+            AgentState.state.value.message?.let { voice?.speak(it) }
+        }
     }
 
     private fun deviceInfo() = JSONObject()
