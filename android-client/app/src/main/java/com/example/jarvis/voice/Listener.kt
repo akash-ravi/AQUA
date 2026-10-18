@@ -34,9 +34,9 @@ internal fun soundsUnfinished(transcript: String): Boolean {
     return text.substringAfterLast(' ').lowercase() in DANGLING_WORDS
 }
 
-private val OPENER_WORDS = setOf("okay", "ok", "hi", "hey", "hello", "jarvis", "so", "alright", "well", "now", "um", "uh", "hmm")
+private val OPENER_WORDS = setOf("okay", "ok", "hi", "hey", "hello", "aqua", "so", "alright", "well", "now", "um", "uh", "hmm")
 
-/** "Okay." or "Hey Jarvis." alone is a lead-in; the request usually follows after a breath. */
+/** "Okay." or "Hey Aqua." alone is a lead-in; the request usually follows after a breath. */
 internal fun isOnlyOpener(transcript: String): Boolean {
     val words = transcript.lowercase().split(Regex("[^a-z]+")).filter { it.isNotEmpty() }
     return words.isNotEmpty() && words.all { it in OPENER_WORDS }

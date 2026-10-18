@@ -46,7 +46,7 @@ internal class VoiceTurn(
         val token = Any()
         playback = token
         input.playbackActive = true
-        // The mic stays off while Jarvis talks: echo leaking past AEC used to cut its own answers off.
+        // The mic stays off while Aqua talks: echo leaking past AEC used to cut its own answers off.
         stopListening()
         output.speak(text) {
             dispatch {

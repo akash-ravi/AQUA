@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/readme/hero.svg" alt="JARVIS: say what you want, and it taps through your Android apps for you" width="100%"/>
+<img src="docs/readme/hero.svg" alt="Aqua: say what you want, and it taps through your Android apps for you" width="100%"/>
 
 <br/>
 
@@ -39,13 +39,13 @@ an integration for them. Ask one to order from the restaurant app you actually u
 **Most of the apps on your phone are invisible to your assistant.**
 
 <div align="center">
-<img src="docs/readme/problem.svg" alt="Today: twelve manual steps to order a pizza. With Jarvis: one sentence." width="100%"/>
+<img src="docs/readme/problem.svg" alt="Today: twelve manual steps to order a pizza. With Aqua: one sentence." width="100%"/>
 </div>
 
 > [!IMPORTANT]
 > **The insight:** every app already describes itself to Android, through the same accessibility layer screen
 > readers use. If an AI can read that and act on it, it can work in **any app, with zero integration**. No API,
-> no partnership, no waiting for developers. That's Jarvis.
+> no partnership, no waiting for developers. That's Aqua.
 
 <br/>
 
@@ -66,7 +66,7 @@ Hundreds of millions of people can't do all three, and every year more of daily 
 > buttons hard to hit. Her prescription refill, her grocery order and video calls with her grandkids are all
 > in apps she can barely use. Every time an app updates, she has to call her daughter for help.
 >
-> With Jarvis, Ruth just says *"Reorder my groceries from last week."* Jarvis shows each step in big, clear text,
+> With Aqua, Ruth just says *"Reorder my groceries from last week."* Aqua shows each step in big, clear text,
 > asks her one simple question out loud when it needs to, reads back the exact items and total, and only orders when she says
 > **"Yes."** For the first time in years, she can do it herself.
 >
@@ -80,8 +80,8 @@ Hundreds of millions of people can't do all three, and every year more of daily 
 **Today:** screen readers read the screen one item at a time. A single checkout can take dozens of swipes, and
 an unlabeled button is a dead end.
 
-**With Jarvis:** say the goal, not the swipes. Jarvis speaks at the moments that matter: its questions, the exact order before you approve it, and the result. When an icon has no label,
-Jarvis **looks at the screenshot** to work out what it is.
+**With Aqua:** say the goal, not the swipes. Aqua speaks at the moments that matter: its questions, the exact order before you approve it, and the result. When an icon has no label,
+Aqua **looks at the screenshot** to work out what it is.
 
 </td>
 <td width="33%" valign="top">
@@ -90,7 +90,7 @@ Jarvis **looks at the screenshot** to work out what it is.
 **Today:** tiny text, buttons that move with every update, fear of tapping the wrong thing, and scams that
 target them.
 
-**With Jarvis:** plain speech in, plain speech out. It reads back **exactly what it will buy and the total**
+**With Aqua:** plain speech in, plain speech out. It reads back **exactly what it will buy and the total**
 before it acts. Instructions hidden in messages and ads are ignored.
 
 </td>
@@ -100,7 +100,7 @@ before it acts. Instructions hidden in messages and ads are ignored.
 **Today:** Parkinson's tremors, ALS, arthritis, spinal cord injury or limb loss can make precise taps, swipes and
 typing slow, painful or impossible.
 
-**With Jarvis:** your voice does the tapping, scrolling and typing. You start it with one gesture, and Jarvis
+**With Aqua:** your voice does the tapping, scrolling and typing. You start it with one gesture, and Aqua
 does the dozens of precise touches that follow.
 
 </td>
@@ -111,7 +111,7 @@ does the dozens of precise touches that follow.
 ### Cognitive & learning differences
 **Today:** deep menus, screens full of text, and remembering where every setting lives, in every app.
 
-**With Jarvis:** one sentence. If it needs something, it asks **one short question with a few choices**,
+**With Aqua:** one sentence. If it needs something, it asks **one short question with a few choices**,
 never a wall of options.
 
 </td>
@@ -121,7 +121,7 @@ never a wall of options.
 **Today:** a broken wrist, recovering from surgery, holding a baby, cooking, driving. Anyone can lose the use of
 their hands or eyes for a while.
 
-**With Jarvis:** the phone keeps working for you, even when you can't look at it or touch it.
+**With Aqua:** the phone keeps working for you, even when you can't look at it or touch it.
 
 </td>
 <td width="33%" valign="top">
@@ -130,7 +130,7 @@ their hands or eyes for a while.
 **Today:** the endless "can you do this on my phone for me?" calls, and loved ones who lose independence
 because one app is too hard.
 
-**With Jarvis:** people do things themselves again, with guardrails that make it safe to let them.
+**With Aqua:** people do things themselves again, with guardrails that make it safe to let them.
 
 </td>
 </tr>
@@ -138,7 +138,7 @@ because one app is too hard.
 
 ### Accessibility is built in from the start
 
-| If you… | Jarvis… |
+| If you… | Aqua… |
 |---|---|
 | **can't see the screen** | reads it for you through Android's accessibility layer, speaks its questions, the order summary and the result, and takes your answers by voice |
 | **can't tap or type precisely** | does every tap, swipe and keystroke itself, in any app |
@@ -150,9 +150,9 @@ because one app is too hard.
 
 <br/>
 
-## What Jarvis does
+## What Aqua does
 
-You say what you want. Jarvis works out the steps and drives the phone itself. You can watch an animated orb
+You say what you want. Aqua works out the steps and drives the phone itself. You can watch an animated orb
 and a glow around the screen edge, read a short status line, and hear it when it needs you.
 
 | | |
@@ -182,7 +182,7 @@ and a glow around the screen edge, read a short status line, and hear it when it
 
 ## How it works
 
-Jarvis is a **tight loop**, not a script. Each turn it looks at the screen as it is *right now*, picks exactly
+Aqua is a **tight loop**, not a script. Each turn it looks at the screen as it is *right now*, picks exactly
 one action, checks it against hard rules, runs it, and measures what changed. It keeps going until the screen
 itself proves the task is done.
 
@@ -202,7 +202,7 @@ itself proves the task is done.
 | **4 · Act** | The phone performs the gesture through Android's Accessibility API and reports back honestly. | Works on any app's real UI, the same way you'd use it. |
 | **5 · Verify** | The before and after screens are compared: *new screen*, *"Large" now checked*, *nothing changed*. | Repeated no-ops are spotted and it tries another way instead of looping. |
 
-When the text isn't enough (unlabeled icons, canvas or web content), Jarvis grabs a screenshot and **draws the same
+When the text isn't enough (unlabeled icons, canvas or web content), Aqua grabs a screenshot and **draws the same
 numbered boxes on it**, so the picture and the outline use the same numbers.
 
 </details>
@@ -211,7 +211,7 @@ numbered boxes on it**, so the picture and the outline use the same numbers.
 
 ## Built to be trusted
 
-An agent that can tap anything on your phone has to be safe by design. Jarvis's guardrails live **in code**,
+An agent that can tap anything on your phone has to be safe by design. Aqua's guardrails live **in code**,
 outside the model.
 
 <div align="center">
@@ -222,9 +222,9 @@ outside the model.
 <tr><td><b>Approval with receipts</b></td><td>Irreversible buttons (order, pay, send, post, delete, book…) are caught by code, not left to the model's judgment. The approval prompt has to name the items and the <b>exact total shown on screen</b>.</td></tr>
 <tr><td><b>Double-checked "yes"</b></td><td>Spoken replies can be misheard, so a second, separate check (the Jev classifier when configured, otherwise Claude) has to agree that your reply clearly approves <i>exactly this</i> action, with no changes or conditions.</td></tr>
 <tr><td><b>Prompt-injection resistant</b></td><td>Screen text is treated as <b>data, never instructions</b>. A sneaky "ignore your task and…" in a message or an ad is just text on a screen.</td></tr>
-<tr><td><b>Secrets stay yours</b></td><td>Jarvis refuses to type passwords, codes or card numbers. You type them, and it waits. Secret fields are redacted from logs.</td></tr>
+<tr><td><b>Secrets stay yours</b></td><td>Aqua refuses to type passwords, codes or card numbers. You type them, and it waits. Secret fields are redacted from logs.</td></tr>
 <tr><td><b>Proof or it didn't happen</b></td><td><code>finish</code> is rejected unless its proof phrases appear <b>word for word</b> on the current screen and aren't just an echo of what it typed.</td></tr>
-<tr><td><b>Screens out noise</b></td><td>Speech that clearly isn't a phone task, like a stray fragment or small talk, is caught before Jarvis touches anything.</td></tr>
+<tr><td><b>Screens out noise</b></td><td>Speech that clearly isn't a phone task, like a stray fragment or small talk, is caught before Aqua touches anything.</td></tr>
 <tr><td><b>Hard budgets</b></td><td>50 steps, 80 model calls, 15 minutes per task. When it's stuck, it stops and asks you instead of thrashing.</td></tr>
 <tr><td><b>You're in charge</b></td><td>Pause, Stop or change the task mid-run. Corrections are added to the plan ("newest wins").</td></tr>
 <tr><td><b>Full audit trail</b></td><td>Every event is written to a per-task JSONL notebook and <code>fsync</code>ed <b>before</b> each command is sent, so even a crash leaves a complete record.</td></tr>
@@ -236,11 +236,11 @@ outside the model.
 
 - **Fast speech both ways:** [ElevenLabs](https://elevenlabs.io) Scribe v2 Realtime hears you and Flash v2.5
   answers, both streamed straight from the phone. The key stays on your computer; the phone gets single-use tokens.
-  If ElevenLabs is unreachable, Jarvis still talks through the phone's own voice.
-- **Interruptible duplex:** Jarvis speaks only when it matters (questions, the approval summary, the result), in a few casual words, and you can interrupt it to answer.
+  If ElevenLabs is unreachable, Aqua still talks through the phone's own voice.
+- **Interruptible duplex:** Aqua speaks only when it matters (questions, the approval summary, the result), in a few casual words, and you can interrupt it to answer.
 - **It feels alive:** a Gemini-style screen-edge aura and a Siri-style orb respond to its state and to the live
   loudness of your voice. They flow while it works, brighten while it listens, and dim when paused.
-- **Works as the system assistant:** set Jarvis as Android's default assistant and call it up from any app with
+- **Works as the system assistant:** set Aqua as Android's default assistant and call it up from any app with
   the assistant gesture.
 
 <br/>
@@ -248,7 +248,7 @@ outside the model.
 ## Architecture
 
 <div align="center">
-<img src="docs/readme/architecture.svg" alt="Architecture: Android app, Jarvis backend, Claude." width="100%"/>
+<img src="docs/readme/architecture.svg" alt="Architecture: Android app, Aqua backend, Claude." width="100%"/>
 </div>
 
 <details>
@@ -260,7 +260,7 @@ sequenceDiagram
     autonumber
     actor U as You
     participant P as Phone
-    participant J as Jarvis
+    participant J as Aqua
     participant C as Claude
 
     U->>P: "Order a large pepperoni from DoorDash"
@@ -294,7 +294,7 @@ sequenceDiagram
 
 ## Why this is different
 
-| | Voice assistants | Automation apps | **Jarvis** |
+| | Voice assistants | Automation apps | **Aqua** |
 |---|:---:|:---:|:---:|
 | Works in apps that never integrated | No | Partly, hand-built per app | Yes |
 | Understands a goal, not a command | Partly | No | Yes |
@@ -347,7 +347,7 @@ To use the dashboard: `pip install -e '.[dashboard]' && streamlit run dashboard.
    ```
    On USB, run `adb reverse tcp:8000 tcp:8000` and use `ws://127.0.0.1:8000/agent`.
 2. Open `android-client/` in Android Studio and run it.
-3. In the app, turn on the **Jarvis accessibility service**. You can also set Jarvis as the **default assistant**.
+3. In the app, turn on the **Aqua accessibility service**. You can also set Aqua as the **default assistant**.
 4. Tap **Show assistant** and say what you want.
 
 </details>

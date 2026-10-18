@@ -83,7 +83,7 @@ fun TaskScreen(
                     Text("J", color = colors.onPrimary, fontSize = 26.sp, fontWeight = FontWeight.Black)
                 }
                 Column(Modifier.weight(1f)) {
-                    Text("JARVIS", fontWeight = FontWeight.Bold, letterSpacing = 4.sp, fontSize = 16.sp)
+                    Text("AQUA", fontWeight = FontWeight.Bold, letterSpacing = 4.sp, fontSize = 16.sp)
                     Text("A little less doing.", color = colors.onSurfaceVariant, fontSize = 12.sp)
                 }
                 Surface(color = colors.primary.copy(alpha = 0.12f), shape = RoundedCornerShape(50)) {

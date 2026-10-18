@@ -60,7 +60,7 @@ class Voice(
         listener.prefetch()
     }
 
-    /** Also opens the reply's speech connection, since Jarvis answers right after hearing a request. */
+    /** Also opens the reply's speech connection, since Aqua answers right after hearing a request. */
     fun listen(): Boolean = turn.listen().also { if (it) eleven.warm() }
 
     /** With [listenForReply], the mic stays open during playback when AEC is available. */

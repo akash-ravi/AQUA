@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 440" width="1280" height="440" role="img" aria-label="Three guardrails: Jarvis asks before anything it can't undo, never types your secrets, and only calls a task done when the screen proves it.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 440" width="1280" height="440" role="img" aria-label="Three guardrails: Aqua asks before anything it can't undo, never types your secrets, and only calls a task done when the screen proves it.">
   <defs>
     <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="#FFB77A"/>

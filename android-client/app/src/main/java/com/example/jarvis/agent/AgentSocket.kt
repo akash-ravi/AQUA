@@ -134,7 +134,7 @@ class AgentSocket(
                     AgentState.setPaused(false)
                     val status = message.optString("text")
                     if (status.isNotBlank()) {
-                        AgentState.log("Jarvis: $status")
+                        AgentState.log("Aqua: $status")
                         AgentState.status(status)
                     }
                 }

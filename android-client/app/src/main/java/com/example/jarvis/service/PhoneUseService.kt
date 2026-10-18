@@ -91,10 +91,10 @@ class PhoneUseService : AccessibilityService() {
                     }
                 }
                 if (it.mode != OverlayMode.IDLE) notification.show(when (it.mode) {
-                    OverlayMode.PAUSED -> "Jarvis is paused"
-                    OverlayMode.PAUSING -> "Jarvis is pausing"
-                    OverlayMode.WAITING_FOR_USER -> "Jarvis needs your input"
-                    else -> it.status ?: "Jarvis is controlling the phone"
+                    OverlayMode.PAUSED -> "Aqua is paused"
+                    OverlayMode.PAUSING -> "Aqua is pausing"
+                    OverlayMode.WAITING_FOR_USER -> "Aqua needs your input"
+                    else -> it.status ?: "Aqua is controlling the phone"
                 })
             }
         }
@@ -107,7 +107,7 @@ class PhoneUseService : AccessibilityService() {
     override fun onDestroy() {
         instance = null
         // Android suspends this service when another tool takes over accessibility (e.g. adb uiautomator).
-        val reason = "Jarvis's accessibility service was turned off, so the task ended."
+        val reason = "Aqua's accessibility service was turned off, so the task ended."
         endTask(reason, TaskOutcome.FAILED) { it.disconnect(reason) }
         overlay?.close()
         overlay = null
@@ -150,7 +150,7 @@ class PhoneUseService : AccessibilityService() {
             notification.hide()
             AgentState.finish(TaskOutcome.FAILED, "Could not start the task. Open the activity log for details.")
             AgentState.log("Startup failed: ${error.javaClass.simpleName}")
-            Toast.makeText(this, "Jarvis could not start this task. Open the app for details.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Aqua could not start this task. Open the app for details.", Toast.LENGTH_LONG).show()
             false
         }
     }
@@ -266,7 +266,7 @@ class PhoneUseService : AccessibilityService() {
 
     private fun onMicPressed() {
         if (listening) { voice?.cancel(); return }
-        if (!listen()) AgentState.message("Voice input is unavailable. Allow microphone access in the Jarvis app.")
+        if (!listen()) AgentState.message("Voice input is unavailable. Allow microphone access in the Aqua app.")
     }
 
     private fun onListeningChanged(value: Boolean) {

@@ -98,7 +98,7 @@ def check_finish(args: dict, view, *, goal: str, corrections: list[str], typed: 
     for phrase in proof:
         wanted = screens.normalize(phrase)
         own = any(wanted in words for words in own_words)
-        # A field (calculator display) proves results, but never text the user asked for or Jarvis typed, like a draft.
+        # A field (calculator display) proves results, but never text the user asked for or Aqua typed, like a draft.
         texts = shown if own else shown + fields
         short_number = any(char.isdigit() for char in wanted) and wanted in texts
         if len(wanted) > 120 or (len(wanted) < 4 and not short_number):

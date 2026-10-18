@@ -18,7 +18,7 @@ WARM_EVERY_SECONDS = 270  # just under the 5-minute cache TTL
 APPROVAL_PROMPT = ("The user was asked to approve an action that can't be undone. Their spoken reply may be "
                    "misheard. Answer APPROVE only if the reply clearly says yes to exactly this action, with no "
                    "changes or conditions. Otherwise answer NO. Answer with one word.")
-CHAT_PROMPT = ("You are Jarvis, a voice assistant that can also operate the user's Android phone. The user said "
+CHAT_PROMPT = ("You are Aqua, a voice assistant that can also operate the user's Android phone. The user said "
                "something that isn't a phone task; it came from speech and may be misheard. Be super chill, like a "
                "laid-back friend texting back: lowercase vibe, a few words, slang is fine, never formal, never "
                "eager, no lists or markdown. \"yo what's up\" not \"Hello! How can I help you today?\". "

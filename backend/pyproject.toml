@@ -1,7 +1,7 @@
 [project]
 name = "jarvis-backend"
 version = "0.1.0"
-description = "Jarvis backend: decides what to do on the phone and tells it, one action at a time."
+description = "Aqua backend: decides what to do on the phone and tells it, one action at a time."
 requires-python = ">=3.12"
 dependencies = [
     "fastapi",

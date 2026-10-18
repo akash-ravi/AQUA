@@ -1,6 +1,6 @@
 # Floating assistant overlay
 
-Enable the Jarvis accessibility service once. In the app, tap **Show assistant** (or use the
+Enable the Aqua accessibility service once. In the app, tap **Show assistant** (or use the
 assistant gesture) to show the orb: a bare orb at the bottom of the screen, already listening.
 Tap the orb to open the panel with the status, Pause/Stop and the text box; tap it again to
 shrink back to the orb. The text box can start a task or answer the current question. Send
@@ -11,12 +11,12 @@ collapses it to the orb.
   acknowledgement and resumes the same task after reading a fresh screen.
 - **Stop** ends the task. It does not restart automatically; type a new task to work again.
 - Tap the running-task notification or **Show assistant** to bring a hidden panel back.
-- **Set default assistant** opens Android's assistant chooser. Choose Jarvis yourself;
+- **Set default assistant** opens Android's assistant chooser. Choose Aqua yourself;
   its assistant gesture invokes the text composer. Accessibility must also remain enabled.
 
 The orb in the panel header and the screen-edge aura are both driven by assistant state and
 live voice loudness: they flow while working, brighten while waiting or listening, slow and dim
-when paused, and swell with your voice or Jarvis's reply. The aura disappears when idle (unless
+when paused, and swell with your voice or Aqua's reply. The aura disappears when idle (unless
 listening) or hidden.
 
 Invocation follows Gemini's overlay. A thin line lights every edge at once. The soft glow then
@@ -78,8 +78,8 @@ alone is not proof of completion.
   `AssistantActivity` remains an `ACTION_ASSIST` entry point. Neither path records audio.
 
 After installing the updated APK, open **Settings → Apps → Default apps → Digital assistant app**
-and choose Jarvis. The app's **Set default assistant** button opens assistant settings rather
-than requesting the assistant role through a dialog. If Jarvis is absent, verify the installed
+and choose Aqua. The app's **Set default assistant** button opens assistant settings rather
+than requesting the assistant role through a dialog. If Aqua is absent, verify the installed
 APK contains `JarvisAssistantService` and its `android.voice_interaction` metadata; rebuilding
 from an older branch will not include this registration. Pixel 9a / Android 17 validation is pending.
 
@@ -98,7 +98,7 @@ latency. The ElevenLabs key stays in `backend/.env`. The phone asks the Mac for 
 fetched ahead, so a turn never waits on that round trip. If ElevenLabs can't speak (no key, no network), replies
 fall back to the phone's own text-to-speech engine. The manifest declares the `TTS_SERVICE` query, without which
 Android 11+ hides that engine. Without ElevenLabs there is no speech input; type instead.
-Jarvis says "Got it." after an answer and speaks questions and the final result. Step
+Aqua says "Got it." after an answer and speaks questions and the final result. Step
 statuses appear as text. The orb follows the loudness of the audio being played.
 
 | Stage | Model | Why |
@@ -118,7 +118,7 @@ text. While a question is spoken, the mic remains open if Android's acoustic ech
 recording captures the full answer. This is duplex audio; the final text arrives when ElevenLabs commits it.
 
 The microphone uses `VOICE_COMMUNICATION` with a session-bound `AcousticEchoCanceler`.
-If AEC cannot be enabled, Jarvis falls back to speaking the question before opening the mic;
+If AEC cannot be enabled, Aqua falls back to speaking the question before opening the mic;
 tapping the mic can still interrupt playback. AEC availability does not guarantee effective
 echo rejection on every device/audio route. Speakerphone, wired/headset, and Bluetooth paths
 need device testing. The app does not change global call mode or force a speaker/Bluetooth route.
@@ -169,7 +169,7 @@ accept individual spoken English digits; use direct manual entry if recognition 
 Older phones retain direct manual entry; they cannot receive raw secrets from this backend.
 
 Recognition still cannot establish whether unrelated background speech was intended for
-Jarvis. Wake words, speaker identification, and additional noise filtering remain deferred.
+Aqua. Wake words, speaker identification, and additional noise filtering remain deferred.
 
 ## Validation
 
@@ -190,7 +190,7 @@ stale callbacks. These tests do not verify hardware echo cancellation. On a phys
 - Interrupt at the beginning, middle, and end of a question, including a short "yes" or "no":
   playback should stop and the answer's first word should survive transcription.
 - Repeat at high playback volume and with background noise, then test connected headsets.
-  Check that Jarvis never interprets its own question as confirmation.
+  Check that Aqua never interprets its own question as confirmation.
 - Hide/Stop during speech and recognition, change the pending question, and answer by text:
   no cancelled answer should be submitted or microphone restarted by an old callback.
 - Complete a call task: the overlay and microphone should stay dismissed during the call.

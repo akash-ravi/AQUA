@@ -10,7 +10,7 @@ import android.content.Intent
 class TaskNotification(private val context: Context) {
     private val manager = context.getSystemService(NotificationManager::class.java)
 
-    fun show(title: String = "Jarvis is controlling the phone") {
+    fun show(title: String = "Aqua is controlling the phone") {
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "Running task", NotificationManager.IMPORTANCE_LOW)
         )

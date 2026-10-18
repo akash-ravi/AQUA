@@ -64,7 +64,7 @@ class AgentOverlay(
         setPadding(dp(8), dp(12), dp(8), dp(12))
         setOnClickListener { setExpanded(!expanded) }
     }
-    /** What Jarvis is doing right now, under the collapsed orb. */
+    /** What Aqua is doing right now, under the collapsed orb. */
     private val caption = TextView(context).apply {
         setTextColor(BrandColors.Muted.toInt())
         textSize = 12f
@@ -169,7 +169,7 @@ class AgentOverlay(
         gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
         y = dp(24)
         softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-        setTitle("Jarvis assistant")
+        setTitle("Aqua assistant")
     }
 
     /** Rises and scales up into place; showing again mid-dismiss reverses from where it is. */
@@ -212,19 +212,19 @@ class AgentOverlay(
         orb.mode = next.mode
         orb.listening = listening
         title.text = if (listening) "Listening…" else when (next.mode) {
-            OverlayMode.IDLE -> "JARVIS"
+            OverlayMode.IDLE -> "AQUA"
             OverlayMode.PROCESSING -> next.status ?: "Working…"
             OverlayMode.WAITING_FOR_USER -> "Needs your input"
             OverlayMode.PAUSING -> "Pausing…"
             OverlayMode.PAUSED -> "Paused"
         }
         title.contentDescription = "${title.text}. Tap to ${if (expanded) "collapse" else "expand"} assistant"
-        orb.contentDescription = if (expanded) "Collapse Jarvis" else "Jarvis: ${title.text}. Tap to type"
+        orb.contentDescription = if (expanded) "Collapse Aqua" else "Aqua: ${title.text}. Tap to type"
         prompt.text = next.question ?: next.message ?: "How can I help?"
         input.hint = when {
             listening -> "Listening… or type"
             next.mode != OverlayMode.IDLE && next.questionId == null -> "Queue another task"
-            next.questionId == null -> "What should Jarvis do?"
+            next.questionId == null -> "What should Aqua do?"
             else -> "Your answer"
         }
         updateAction()

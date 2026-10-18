@@ -61,12 +61,12 @@
       <path d="M656 76 q22 30 0 60" class="wave w2"/>
       <path d="M672 66 q30 40 0 80" class="wave w3"/>
     </g>
-    <text x="700" y="112" class="sans" font-size="13" font-weight="700" letter-spacing="1.5" fill="#FF6B35">JARVIS</text>
+    <text x="700" y="112" class="sans" font-size="13" font-weight="700" letter-spacing="1.5" fill="#FF6B35">AQUA</text>
     <text x="700" y="130" class="sans" font-size="13" font-weight="700" letter-spacing="1.5" fill="#FF6B35">SPEAKS</text>
     <text x="480" y="222" class="sans" font-size="66" font-weight="800" fill="url(#brand)">2.2B</text>
     <text x="480" y="262" class="sans" font-size="19" font-weight="600" fill="#FFF3EC">people have a near or distance</text>
     <text x="480" y="288" class="sans" font-size="19" font-weight="600" fill="#FFF3EC">vision impairment.</text>
-    <text x="480" y="340" class="sans" font-size="14.5" fill="#CCADA0">Phones are built for eyes. Jarvis</text>
+    <text x="480" y="340" class="sans" font-size="14.5" fill="#CCADA0">Phones are built for eyes. Aqua</text>
     <text x="480" y="362" class="sans" font-size="14.5" fill="#CCADA0">reads the screen and talks you through it.</text>
   </g>
 

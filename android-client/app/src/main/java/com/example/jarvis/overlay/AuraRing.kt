@@ -69,7 +69,7 @@ class AuraRing(context: Context, private val level: () -> Float) {
         layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         setFitInsetsTypes(0)
-        setTitle("Jarvis edge aura")
+        setTitle("Aqua edge aura")
     }
 
     private val view = object : View(context) {

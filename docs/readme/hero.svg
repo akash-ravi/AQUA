@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 460" width="1280" height="460" role="img" aria-label="JARVIS: say what you want, and it taps through your Android apps for you">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 460" width="1280" height="460" role="img" aria-label="AQUA: say what you want, and it taps through your Android apps for you">
   <defs>
     <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="#FFB77A"/>
@@ -70,7 +70,7 @@
     <rect width="1280" height="460" fill="url(#pool)"/>
     <rect width="1280" height="460" fill="url(#dots)" mask="url(#dotMask)" opacity="0.5"/>
 
-    <!-- screen-edge aura, like the one Jarvis draws on the phone -->
+    <!-- screen-edge aura, like the one Aqua draws on the phone -->
     <rect x="6" y="6" width="1268" height="448" rx="24" fill="none" stroke="url(#edge)" stroke-width="16" filter="url(#blur18)" class="breathe"/>
     <rect x="3" y="3" width="1274" height="454" rx="26" fill="none" stroke="url(#edge)" stroke-width="1.5" opacity="0.5"/>
     <rect x="3" y="3" width="1274" height="454" rx="26" fill="none" stroke="#FFF3EC" stroke-width="2.5" class="run" filter="url(#blur6)"/>
@@ -83,7 +83,7 @@
     <circle cx="94" cy="82" r="5" fill="#FF6B35" class="breathe"/>
     <text x="108" y="87.5" font-size="14" font-weight="600" fill="#CCADA0" letter-spacing="1.6">AN AI AGENT FOR YOUR PHONE</text>
 
-    <text x="66" y="200" font-size="118" font-weight="800" fill="url(#brand)" letter-spacing="6">JARVIS</text>
+    <text x="66" y="200" font-size="118" font-weight="800" fill="url(#brand)" letter-spacing="6">AQUA</text>
     <text x="72" y="252" font-size="28" font-weight="500" fill="#FFF3EC">Say what you want. It taps through your apps.</text>
     <text x="72" y="286" font-size="18" fill="#CCADA0">Any app, no integration needed. It asks before it pays, and it shows proof when it's done.</text>
   </g>

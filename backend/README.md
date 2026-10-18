@@ -1,7 +1,7 @@
-# Jarvis backend
+# Aqua backend
 
-The brain of Jarvis. It runs on your Mac. The Android app connects to it over a WebSocket, sends what is on the
-screen, and Jarvis asks Claude for the next action, checks it, and tells the phone to do it, one action at a time,
+The brain of Aqua. It runs on your Mac. The Android app connects to it over a WebSocket, sends what is on the
+screen, and Aqua asks Claude for the next action, checks it, and tells the phone to do it, one action at a time,
 until the task is done with proof on screen. The message format the phone must speak is in [`../.agents/phone-protocol.md`](../.agents/phone-protocol.md).
 
 ## Setup (once)
@@ -85,11 +85,11 @@ src/
 ## Privacy note
 
 Screen text and screenshots go to the Anthropic API; the DoorDash checkout screen shows your address and card. Screens
-and screenshots are never saved to disk. Your voice and Jarvis's replies go to ElevenLabs.
+and screenshots are never saved to disk. Your voice and Aqua's replies go to ElevenLabs.
 
 ## Troubleshooting
 
-- Search text appears but results never load: the phone answers `cantSubmit` when a field can't submit; Jarvis then
+- Search text appears but results never load: the phone answers `cantSubmit` when a field can't submit; Aqua then
   uses a visible Search button or suggestion, or asks you to press Search.
 - Phone can't connect: same Wi-Fi? health link works in the phone browser? Mac firewall allows port 8000? Try USB.
 - "too many requests" / "out of credits": the Anthropic account is rate limited or out of credit. Wait, or top up.

@@ -41,7 +41,7 @@ class MainActivity : ComponentActivity() {
             if (PhoneUseService.instance != null) {
                 showAssistant()
             } else {
-                Toast.makeText(this, "Enable Jarvis accessibility to open the floating assistant", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Enable Aqua accessibility to open the floating assistant", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -97,7 +97,7 @@ class MainActivity : ComponentActivity() {
     private fun startTask(task: String) {
         val service = PhoneUseService.instance
         if (service == null) {
-            Toast.makeText(this, "Enable the Jarvis accessibility service first", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Enable the Aqua accessibility service first", Toast.LENGTH_LONG).show()
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         } else {
             if (service.startTask(task)) moveTaskToBack(true)
