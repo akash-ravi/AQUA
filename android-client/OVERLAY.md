@@ -17,7 +17,14 @@ collapses it to the orb.
 The orb in the panel header and the screen-edge aura are both driven by assistant state and
 live voice loudness: they flow while working, brighten while waiting or listening, slow and dim
 when paused, and swell with your voice or Jarvis's reply. The aura disappears when idle (unless
-listening) or hidden. Both windows are temporarily hidden before screenshot capture. The aura
+listening) or hidden.
+
+Invocation follows Gemini's overlay. A thin line lights every edge at once. The soft glow then
+blooms in from beyond the bezel (about 450 ms, emphasized decelerate). It is thin near the status
+bar and pools at the bottom over a faint wash and a halftone dot field, and two light blobs
+drift along the side edges. The orb rises and scales up into place, and tapping it grows it into
+the panel. On dismissal the glow retracts back out through the top and sides first, with the
+bottom last, and the orb shrinks and fades. Showing it again mid-exit reverses from where it is. Both windows are temporarily hidden before screenshot capture. The aura
 is not touchable and cannot take keyboard focus. The panel is shown on demand, not every
 time the accessibility service starts.
 
@@ -58,8 +65,10 @@ alone is not proof of completion.
   `TYPE_ACCESSIBILITY_OVERLAY`. It takes keyboard focus only while editing and releases
   it before the phone resumes acting. The service removes the window when destroyed.
 - `overlay/AuraRing.kt` owns the separate edge-effect window and stops animation when hidden.
-  The soft glow and inner line are rendered once into an alpha mask (rebuilt on size, inset
-  or rotation changes) and tinted each frame with a rotating warm `SweepGradient`. Corner radii
+  The glow (edge, bottom pool, wash, halftone dots) and the inner line are rendered on a
+  background thread into two alpha masks (rebuilt only when size or corner radii change) and
+  tinted each frame with a rotating warm `SweepGradient`. Entry and exit scale the glow mask
+  about the bottom edge. Screenshot capture hides the window without restarting the entry. Corner radii
   come from `Display.getRoundedCorner`, then window insets, then a 32dp fallback.
 - `overlay/OrbView.kt` draws the Siri-style orb: three additive warm blobs and a light core.
   It animates only while visible, so a hidden or capture-hidden panel costs no frames.
