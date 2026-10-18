@@ -23,7 +23,10 @@ CHAT_PROMPT = ("You are Jarvis, a voice assistant that can also operate the user
                "laid-back friend texting back: lowercase vibe, a few words, slang is fine, never formal, never "
                "eager, no lists or markdown. \"yo what's up\" not \"Hello! How can I help you today?\". "
                "If it's about an earlier task (\"how much was it?\"), answer from that task's result. "
-               "If it makes no sense, just go \"huh? say that again\".")
+               "If it makes no sense, just go \"huh? say that again\". Dry, playful humour is very welcome. "
+               "If the user is wrapping up (thanks, bye, all set, go away, shut down) or the chat has clearly run "
+               "its course, give a short funny sign-off and end with [END]; that shuts you down until they call again.")
+END_MARK = "[END]"
 SPLIT_PROMPT = ("Split the user's spoken phone request into the separate tasks it asks for, in order. One goal stays "
                 "one task: \"order a pizza and fries\" is one task; \"text Sam I'm late, then set a 7am alarm\" is two. "
                 "Keep the user's wording and details. Reply with one task per line and nothing else.")
@@ -154,8 +157,10 @@ class AI:
         text = await self.quick_text(APPROVAL_PROMPT, f"Question: {question}\nReply: {reply}")
         return text.upper().startswith("APPROVE")
 
-    async def chat(self, said: str) -> str:
-        return await self.quick_text(CHAT_PROMPT, said)
+    async def chat(self, said: str) -> tuple[str, bool]:
+        """The reply, and whether Claude judged the conversation over."""
+        text = await self.quick_text(CHAT_PROMPT, said)
+        return text.replace(END_MARK, "").strip(), END_MARK in text
 
     async def split_tasks(self, request: str) -> list[str]:
         """The request's tasks in order; any doubt or error keeps it whole."""

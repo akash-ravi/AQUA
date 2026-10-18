@@ -71,6 +71,8 @@ class Voice(
 
     val speaking: Boolean get() = turn.speaking
 
+    val userSpeaking: Boolean get() = turn.userSpeaking
+
     fun cancel() = turn.cancel()
 
     fun close() {

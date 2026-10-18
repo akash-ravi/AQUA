@@ -148,19 +148,19 @@ class Brain:
         self.timing.ai += time.monotonic() - started
         self.notebook.write("intake", phone_task=round(likelihood, 3), speech=kind,
                             ms=round((time.monotonic() - started) * 1000))
-        # Both end as "stopped" so the orb closes and the mic doesn't reopen; noise ends silently.
+        # "stopped" closes the orb and keeps the mic shut; noise ends silently.
         if kind == "noise":
             raise TaskEnded("stopped", "")
-        if kind == "thanks":
-            raise TaskEnded("stopped", "You're welcome!")
-        if likelihood >= NOT_A_TASK_BELOW:
+        if kind != "thanks" and likelihood >= NOT_A_TASK_BELOW:
             return
         started = time.monotonic()
         try:
-            answer = await self.ai.chat(said)
+            answer, ended = await self.ai.chat(said)
         except AIError:
-            answer = ""
+            answer, ended = "", False
         self.timing.ai += time.monotonic() - started
+        if kind == "thanks" or ended:
+            raise TaskEnded("stopped", answer or "You're welcome!")
         raise TaskEnded("needs_user", answer or f"I heard \"{self.task.goal}\" but not a task. Say it again?")
 
     async def decide_next_action(self):

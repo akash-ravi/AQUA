@@ -22,7 +22,8 @@ internal class VoiceTurn(
 ) {
     private var recording: Any? = null
     private var playback: Any? = null
-    private var userSpeaking = false
+    var userSpeaking = false
+        private set
     private var closed = false
 
     val speaking: Boolean get() = playback != null

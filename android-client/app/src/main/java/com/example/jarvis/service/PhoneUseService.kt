@@ -27,6 +27,7 @@ import com.example.jarvis.overlay.OverlaySubmission
 import com.example.jarvis.overlay.routeInput
 import com.example.jarvis.voice.Voice
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -54,6 +55,7 @@ class PhoneUseService : AccessibilityService() {
     private var captureHidden = false
     private var taskGeneration = 0
     private var awaitingFollowUp = false
+    private var followUpTimeout: Job? = null
     private val queuedTasks = ArrayDeque<String>()
 
     private val stopReceiver = object : BroadcastReceiver() {
@@ -267,6 +269,11 @@ class PhoneUseService : AccessibilityService() {
         listening = value
         overlay?.setListening(value)
         updateAura()
+        followUpTimeout?.cancel()
+        if (value && awaitingFollowUp) followUpTimeout = scope.launch {
+            delay(FOLLOW_UP_WINDOW_MS)
+            if (awaitingFollowUp && voice?.userSpeaking != true && overlay?.expanded != true) hideOverlay()
+        }
         // Launched so a heard follow-up starts its task (clearing the flag) before this runs.
         if (!value) scope.launch {
             if (awaitingFollowUp && !listening && voice?.speaking != true && overlay?.expanded != true) hideOverlay()
@@ -309,10 +316,8 @@ class PhoneUseService : AccessibilityService() {
                     Toast.makeText(this@PhoneUseService, message, Toast.LENGTH_LONG).show()
                 }
             }
-            // Same as a pause: offer more, then the backend's Jev sorts the reply into a request, thanks or noise.
-            val spoken = if (outcome == TaskOutcome.COMPLETED && overlayVisible) "$message What else can I do?" else message
-            // hideOverlay() cancels voice, so speak only after the overlay is settled.
-            voice?.speak(spoken, listenForReply = overlayVisible)
+            // Speak after the overlay settles (hideOverlay cancels voice); silence then closes the orb.
+            voice?.speak(message, listenForReply = overlayVisible)
         }
     }
 
@@ -324,5 +329,7 @@ class PhoneUseService : AccessibilityService() {
     companion object {
         var instance: PhoneUseService? = null
             private set
+
+        private const val FOLLOW_UP_WINDOW_MS = 4_000L
     }
 }

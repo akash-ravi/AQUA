@@ -38,7 +38,8 @@ PAUSE_QUESTION = {
     "criteria": {
         "resume": "Nothing else: carry on, continue, never mind, or no",
         "stop": "Stop, cancel or abandon the task",
-        "thanks": "Thanks the assistant or says they're all set, with nothing more to ask",
+        "thanks": "Ends the conversation with nothing more to ask: thanks, bye, all set, that's all, "
+                  "go away, shut up, a rude dismissal, stop listening or shut down",
         "noise": "Background noise, TV, music or other people talking, not the user answering",
         "change": "A new instruction, a change to the task, or anything else",
     },
@@ -49,7 +50,8 @@ SPEECH_QUESTION = {
                     "assistant (the text may be misheard). What is it?",
     "criteria": {
         "talking": "A request, question, reply or remark aimed at the assistant, even if short",
-        "thanks": "Only thanks, or says they're all set, with no request",
+        "thanks": "Ends the conversation with no request: thanks, bye, all set, that's all, nothing else, "
+                  "go away, shut up, a rude dismissal, stop listening or shut down",
         "noise": "Background noise, TV, music, other people's conversation, or random words",
     },
 }
