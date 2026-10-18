@@ -77,6 +77,8 @@ class Brain:
             while True:
                 if self.link.stop_requested:
                     raise TaskEnded("stopped", "Stopped as you asked.")
+                if await self.wait_if_paused():
+                    await self.read_screen()
                 self.check_budgets()
                 started, before, steps_before, decision = time.monotonic(), replace(self.timing), len(self.task.steps), None
                 try:
@@ -427,6 +429,7 @@ class Brain:
         return result
 
     async def read_screen(self) -> None:
+        await self.wait_if_paused()  # a read during a pause would be stale by the time we resume
         for _ in range(2):
             result = await self.send(new_command("read_screen"), None)
             if result is not None and result.screen is not None:
@@ -454,6 +457,25 @@ class Brain:
         shown = safety.hide_secrets(outcome.text, text) if outcome.text else None
         self.notebook.write("answer", ask_id=outcome.ask_id, status=outcome.status, text=shown)
         return outcome
+
+    async def wait_if_paused(self) -> bool:
+        """Hold the task while the user has it paused. True if it was paused; the screen must be read again."""
+        if not self.link.pause_requested:
+            return False
+        await self.link.progress("paused", "Paused", len(self.task.steps))
+        self.notebook.write("status", to="paused", reason="the user paused")
+        log.info("task %s paused", self.task.id)
+        started = time.monotonic()
+        try:
+            await self.link.wait_while_paused()
+        finally:
+            self.timing.user += time.monotonic() - started
+        if self.link.stop_requested:
+            raise TaskEnded("stopped", "Stopped as you asked.")
+        self.notebook.write("status", to="running", reason="the user resumed")
+        log.info("task %s resumed", self.task.id)
+        await self.link.progress("running", "Resuming", len(self.task.steps))
+        return True
 
     async def sleep_interruptibly(self, seconds: float) -> bool:
         try:

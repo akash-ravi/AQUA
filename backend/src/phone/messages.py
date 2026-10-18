@@ -2,11 +2,12 @@ import json
 import uuid
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, field_validator
 
 MAX_RESULT_CHARS = 12_000_000
 MAX_OTHER_CHARS = 64_000
 MAX_TEXT = 2000
+MAX_PROGRESS_TEXT = 120
 MAX_NODE_TEXT = 500
 MAX_NODES = 1500
 MAX_APPS = 500
@@ -102,8 +103,16 @@ class Stop(Message):
     type: Literal["stop"] = "stop"
 
 
-PhoneMessage = Annotated[Union[Start, WireResult, Answer, Stop], Field(discriminator="type")]
-PHONE_TYPES = {"start", "result", "answer", "stop"}
+class Pause(Message):
+    type: Literal["pause"] = "pause"
+
+
+class Resume(Message):
+    type: Literal["resume"] = "resume"
+
+
+PhoneMessage = Annotated[Union[Start, WireResult, Answer, Stop, Pause, Resume], Field(discriminator="type")]
+PHONE_TYPES = {"start", "result", "answer", "stop", "pause", "resume"}
 
 
 # ---- backend -> phone ----
@@ -128,6 +137,18 @@ class Ask(Message):
     ask_id: str
     kind: Literal["question", "confirm"]
     text: str
+
+
+class Progress(Message):
+    state: Literal["running", "paused"]
+    text: str
+    step: int = 0
+
+    @field_validator("text", mode="before")
+    @classmethod
+    def short_text(cls, value):
+        value = str(value)
+        return value if len(value) <= MAX_PROGRESS_TEXT else value[: MAX_PROGRESS_TEXT - 1] + "…"
 
 
 class Done(Message):

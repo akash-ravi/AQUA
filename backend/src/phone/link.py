@@ -18,7 +18,10 @@ from src.phone.messages import (
     ErrorInfo,
     ErrorMessage,
     Message,
+    Pause,
+    Progress,
     Result,
+    Resume,
     Start,
     Stop,
     WireResult,
@@ -39,7 +42,7 @@ DECLINE_WORDS = {"no", "n", "nope", "cancel", "stop", "don't"}
 
 
 class Interrupted(Exception):
-    """The user pressed Stop."""
+    """The user pressed Stop or Pause."""
 
 
 class PhoneDisconnected(Interrupted):
@@ -65,6 +68,7 @@ class PhoneLink:
         self.height = 0
         self.apps: dict[str, str] = {}
         self.stop_requested = False
+        self.pause_requested = False
         self.disconnected = False
         self.closed = False
         self.on_late_result: Callable[[Result], None] | None = None
@@ -125,7 +129,7 @@ class PhoneLink:
         async with self._send_lock:
             if self.disconnected or self.closed:
                 raise PhoneDisconnected()
-            if check_stop and self.stop_requested:
+            if check_stop and (self.stop_requested or self.pause_requested):
                 raise Interrupted()
             try:
                 await self.ws.send_text(json.dumps(message_to_wire(message)))
@@ -171,7 +175,7 @@ class PhoneLink:
             while not future.done():
                 if self.disconnected:
                     raise PhoneDisconnected()
-                if self.stop_requested:
+                if self.stop_requested or self.pause_requested:
                     return AskOutcome("cancelled", ask_id)
                 remaining = deadline - asyncio.get_running_loop().time()
                 if remaining <= 0:
@@ -187,7 +191,7 @@ class PhoneLink:
             while not job.done():
                 if self.disconnected:
                     raise PhoneDisconnected()
-                if self.stop_requested:
+                if self.stop_requested or self.pause_requested:
                     raise Interrupted()
                 await self._wait_for_change(job, None)
             return job.result()
@@ -195,6 +199,17 @@ class PhoneLink:
             if not job.done():
                 job.cancel()
                 await asyncio.wait({job})
+
+    async def progress(self, state: str, text: str, step: int = 0) -> None:
+        await self.send(Progress(state=state, text=text, step=step))
+
+    async def wait_while_paused(self) -> None:
+        while self.pause_requested and not self.stop_requested:
+            if self.disconnected:
+                raise PhoneDisconnected()
+            await self._state_changed.wait()
+        if self.disconnected:
+            raise PhoneDisconnected()
 
     async def finish(self, done: Done) -> None:
         if not self.stop_requested:
@@ -265,6 +280,10 @@ class PhoneLink:
             self.stop_requested = True
             log.info("The user pressed Stop.")
             self._signal_change()
+        elif isinstance(message, (Pause, Resume)):
+            if not self.stop_requested:
+                self.pause_requested = isinstance(message, Pause)
+                self._signal_change()
         else:
             await self.reject(f"{message.type} is not expected now")
 

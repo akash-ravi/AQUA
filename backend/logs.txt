@@ -1,0 +1,145 @@
+python -m jarvis.server
+AI: claude · claude-sonnet-5-5 · paid (Claude is a paid API)
+Phone (Wi-Fi): ws://172.22.62.82:8000/agent
+Phone (USB):   ws://127.0.0.1:8000/agent  after: adb reverse tcp:8000 tcp:8000
+Check:         http://172.22.62.82:8000/health
+20:58:56 Started server process [308779]
+20:58:56 Waiting for application startup.
+20:58:56 Application startup complete.
+20:58:56 Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+20:59:36 100.66.13.54:39236 - "WebSocket /agent" [accepted]
+20:59:36 connection open
+20:59:36 New task t-614eba6be3014d8c from 100.66.13.54.
+20:59:41 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+20:59:42 step 1: open_app Amazon Shopping → new screen: Amazon Shopping
+20:59:44 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+20:59:46 step 2: tap Search or ask a question → new screen: Amazon Shopping
+20:59:47 The user pressed Stop.
+20:59:47 task t-614eba6be3014d8c ended: stopped — Stopped as you asked.
+21:06:17 100.66.13.54:34972 - "WebSocket /agent" [accepted]
+21:06:17 connection open
+21:06:17 New task t-e1cfbd04f2f94d05 from 100.66.13.54.
+21:06:21 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:23 step 1: open_app Play Store → new screen: Play Store
+21:06:24 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:26 step 2: tap Search → new screen: Play Store
+21:06:28 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:32 step 3: type_text Search or ask Play → new screen: Play Store
+21:06:33 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:35 step 4: tap Install · Install → new screen: Play Store
+21:06:36 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:38 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:40 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:41 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:42 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:44 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:45 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:46 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:48 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:50 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:50 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:52 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:53 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:54 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:55 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:56 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:57 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:06:59 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:00 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:01 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:02 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:03 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:04 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:07 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:08 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:10 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:11 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:12 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:14 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:15 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:16 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:17 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:18 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:20 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:21 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:22 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:24 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:26 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:27 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:28 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:29 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:30 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:31 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:33 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:34 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:35 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:36 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:37 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:39 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:40 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:42 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:43 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:45 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:47 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:48 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:50 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:51 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:07:52 The user pressed Stop.
+21:07:52 task t-e1cfbd04f2f94d05 ended: stopped — Stopped as you asked.
+21:09:31 100.66.13.54:42608 - "WebSocket /agent" [accepted]
+21:09:31 connection open
+21:09:31 New task t-3b3b163e0ffa4ac7 from 100.66.13.54.
+21:09:34 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:09:35 step 1: open_app Contacts → new screen: Contacts
+21:09:37 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:09:38 step 2: type_text Search contacts → the field rejected the text
+21:09:40 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:09:42 step 3: scroll  → new screen: Contacts
+21:09:44 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:09:46 step 4: scroll  → new screen: Contacts
+21:09:49 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:10:21 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:10:23 step 6: tap Akash USC → new screen: Contacts
+21:10:24 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:10:26 step 7: tap Call → new screen: Phone
+21:10:29 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:10:30 step 8: tap Got it → new screen: Phone
+21:10:32 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:10:33 task t-3b3b163e0ffa4ac7 ended: completed — Called Akash USC, the closest match to Akash Ravi USC, as you approved. The call shows in the recent calls list.
+21:11:18 100.66.13.54:36634 - "WebSocket /agent" [accepted]
+21:11:18 connection open
+21:11:18 New task t-d42576d5bbef4f47 from 100.66.13.54.
+21:11:22 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:11:23 step 1: tap call Akash USC → new screen: Phone
+21:11:24 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:11:26 step 2: tap Got it → new screen: Phone
+21:11:28 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:11:29 step 3: tap call Akash USC → new screen: Phone
+21:11:30 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:11:33 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:11:35 step 4: tap Got it → new screen: Phone
+21:11:38 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:11:38 task t-d42576d5bbef4f47 ended: completed — Tapped call on Akash USC; the call log shows an outgoing call to Akash USC at 6:34 PM.
+21:12:04 100.66.13.54:49104 - "WebSocket /agent" [accepted]
+21:12:04 connection open
+21:12:04 New task t-cae2876754164b29 from 100.66.13.54.
+21:12:07 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:12:08 step 1: tap call Akash USC → new screen: Phone
+21:12:09 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:12:13 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:12:15 step 2: tap Got it → new screen: Phone
+21:12:16 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:12:18 step 3: tap call Akash USC → new screen: Phone
+21:12:20 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:12:22 step 4: tap Got it → new screen: Phone
+21:12:24 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:12:29 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:12:44 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:12:57 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:13:05 HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+21:13:16 The user pressed Stop.
+21:13:16 task t-cae2876754164b29 ended: stopped — Stopped as you asked.
+^C21:13:56 Shutting down
+21:13:56 Waiting for application shutdown.
+21:13:56 Application shutdown complete.
+21:13:56 Finished server process [308779]

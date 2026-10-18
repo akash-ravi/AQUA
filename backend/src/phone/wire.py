@@ -1,6 +1,6 @@
 from pydantic import ValidationError
 
-from src.phone.messages import App, Ask, Command, Done, ErrorInfo, ErrorMessage, Image, Node, Result, Screen
+from src.phone.messages import App, Ask, Command, Done, ErrorInfo, ErrorMessage, Image, Node, Progress, Result, Screen
 
 COMMAND_NAMES = {
     "read_screen": "readScreen", "tap": "click", "type_text": "setText", "scroll": "scroll", "go_back": "back",
@@ -15,6 +15,8 @@ NO_EFFECT_ERRORS = {"stale_screen", "stale_target", "app_not_found", "needs_conf
 
 
 def message_to_wire(message) -> dict:
+    if isinstance(message, Progress):
+        return {"type": "progress", **message.model_dump()}
     if isinstance(message, Command):
         return {"type": "command", "id": message.command_id, "name": COMMAND_NAMES[message.action],
                 "args": command_args(message)}
