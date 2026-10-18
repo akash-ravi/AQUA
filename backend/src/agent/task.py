@@ -4,8 +4,6 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from jarvis.messages import new_id
-
 MAX_NOTES = 12
 MAX_NOTE_CHARS = 150
 MAX_SCREENS_SEEN = 8
@@ -33,7 +31,7 @@ class Step:
 class Task:
     goal: str
     device_id: str
-    id: str = field(default_factory=lambda: new_id("t"))
+    id: str
     corrections: list[str] = field(default_factory=list)
     answers: list[tuple[str, str]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -47,8 +45,6 @@ class Task:
     bad_total: int = 0
     finish_misses: int = 0
     wait_seconds: float = 0.0
-    work_seconds: float = 0.0
-    status: str = "running"
 
     def add_note(self, text: str | None) -> None:
         text = (text or "").strip()[:MAX_NOTE_CHARS]
@@ -99,24 +95,14 @@ class Notebook:
         return events
 
 
-def unfinished_task_ids(data_dir: Path) -> list[str]:
-    folder = Path(data_dir) / "tasks"
-    if not folder.exists():
-        return []
-    ids = []
-    for path in sorted(folder.glob("*.jsonl")):
-        events = Notebook(path).read()
-        if events and not any(e["event"] == "done" for e in events):
-            ids.append(path.stem)
-    return ids
-
-
 def mark_interrupted_after_restart(data_dir: Path) -> list[str]:
     """Tasks that were running when the server stopped: unanswered commands become unknown."""
     marked = []
-    for task_id in unfinished_task_ids(data_dir):
-        notebook = Notebook.for_task(data_dir, task_id)
+    for path in sorted((Path(data_dir) / "tasks").glob("*.jsonl")):
+        notebook = Notebook(path)
         events = notebook.read()
+        if not events or any(e["event"] == "done" for e in events):
+            continue
         if any(e["event"] == "status" and e.get("to") == "interrupted" and e.get("reason") == "server restart"
                for e in events[-3:]):
             continue
@@ -126,5 +112,5 @@ def mark_interrupted_after_restart(data_dir: Path) -> list[str]:
                 notebook.write("step_result", n=event.get("n"), command_id=event.get("command_id"),
                                status="unknown", error="no_result", change="server restarted before the phone answered")
         notebook.write("status", to="interrupted", reason="server restart")
-        marked.append(task_id)
+        marked.append(path.stem)
     return marked

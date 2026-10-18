@@ -1,7 +1,7 @@
 import difflib
 import re
 
-from jarvis import screen as screens
+from src.agent import screen as screens
 
 TARGETED = {"tap", "type_text", "confirm_and_tap"}
 

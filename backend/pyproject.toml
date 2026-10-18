@@ -16,5 +16,8 @@ dependencies = [
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+[project.scripts]
+jarvis = "src.app:main"
+
 [tool.setuptools.packages.find]
-include = ["jarvis*"]
+include = ["src*"]

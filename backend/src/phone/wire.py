@@ -1,6 +1,6 @@
 from pydantic import ValidationError
 
-from jarvis.messages import App, Ask, Command, Done, ErrorInfo, ErrorMessage, Image, Node, Result, Screen
+from src.phone.messages import App, Ask, Command, Done, ErrorInfo, ErrorMessage, Image, Node, Result, Screen
 
 COMMAND_NAMES = {
     "read_screen": "readScreen", "tap": "click", "type_text": "setText", "scroll": "scroll", "go_back": "back",
@@ -52,10 +52,6 @@ def result_from_wire(data, command: Command, width: int, height: int) -> Result:
         if command.action == "list_apps":
             apps = [App(label=app["label"], package_name=app["package"]) for app in payload["apps"]]
             return Result(command_id=data.id, status="ok", apps=apps)
-        if command.action == "type_text" and command.submit:
-            submitted = payload.get("submitted")
-            return Result(command_id=data.id, status="ok",
-                          submitted=submitted if type(submitted) is bool else None)
     except (KeyError, TypeError, ValidationError):
         return failed_result(command, "bad_result", "the phone sent a result in the wrong shape")
     return Result(command_id=data.id, status="ok")

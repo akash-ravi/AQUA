@@ -5,8 +5,8 @@ from dataclasses import dataclass
 
 import anthropic
 
-from jarvis.config import Settings
-from jarvis.tools import TOOLS, claude_tools
+from src.config import Settings
+from src.ai.tools import TOOLS, claude_tools
 
 log = logging.getLogger("jarvis.llm")
 

@@ -5,7 +5,7 @@ import unicodedata
 from collections import Counter
 from dataclasses import dataclass
 
-from jarvis.messages import Node, Screen
+from src.phone.messages import Node, Screen
 
 MAX_LABEL = 80
 MAX_LINE = 160

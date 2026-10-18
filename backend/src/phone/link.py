@@ -8,7 +8,7 @@ from typing import Literal
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
-from jarvis.messages import (
+from src.phone.messages import (
     Answer,
     Ask,
     BadMessage,
@@ -25,7 +25,7 @@ from jarvis.messages import (
     new_id,
     parse_phone_message,
 )
-from jarvis.wire import message_to_wire, result_from_wire
+from src.phone.wire import message_to_wire, result_from_wire
 
 log = logging.getLogger("jarvis.phone")
 
