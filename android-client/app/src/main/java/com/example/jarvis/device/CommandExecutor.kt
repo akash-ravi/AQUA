@@ -44,7 +44,12 @@ class CommandExecutor(
             delay(args.optLong("ms").coerceIn(0, MAX_WAIT_MS))
             JSONObject()
         }
-        else -> act(name, args).also { settle() }
+        else -> act(name, args).also { settle() }.also(::attachScreen)
+    }
+
+    private fun attachScreen(result: JSONObject) {
+        // The backend reads the screen after every action; sending it now saves a round trip.
+        runCatching { screenReader.read() }.onSuccess { result.put("screen", it) }
     }
 
     private suspend fun act(name: String, args: JSONObject): JSONObject = when (name) {

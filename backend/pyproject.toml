@@ -9,6 +9,7 @@ dependencies = [
     "pydantic",
     "pydantic-settings",
     "anthropic",
+    "httpx",
     "pillow",
 ]
 

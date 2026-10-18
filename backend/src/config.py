@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     port: int = 8000
     # None lets the SDK find a key or `ant auth login` profile itself
     anthropic_api_key: SecretStr | None = Field(None, validation_alias="ANTHROPIC_API_KEY")
+    typesafe_api_key: SecretStr | None = Field(None, validation_alias="TYPESAFE_API_KEY")
     model: str = "claude-opus-5-5"
-    effort: Literal["low", "medium", "high", "xhigh", "max"] = "medium"
+    effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
     data_dir: Path = BACKEND_DIR / "data"

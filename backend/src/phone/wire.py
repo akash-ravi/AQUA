@@ -56,7 +56,16 @@ def result_from_wire(data, command: Command, width: int, height: int) -> Result:
             return Result(command_id=data.id, status="ok", apps=apps)
     except (KeyError, TypeError, ValidationError):
         return failed_result(command, "bad_result", "the phone sent a result in the wrong shape")
-    return Result(command_id=data.id, status="ok")
+    return Result(command_id=data.id, status="ok", screen=_attached_screen(payload, width, height))
+
+
+def _attached_screen(payload: dict, width: int, height: int) -> Screen | None:
+    if "screen" not in payload:
+        return None
+    try:
+        return screen_from_wire(payload["screen"], width, height)
+    except (KeyError, TypeError, ValidationError):
+        return None  # the backend falls back to reading the screen itself
 
 
 def failed_result(command: Command, code: str, message: str) -> Result:

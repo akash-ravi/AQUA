@@ -25,6 +25,7 @@ MAX_WORK_MINUTES = 15
 MAX_CONSECUTIVE_INVALID_REPLIES = 3
 MAX_INVALID_REPLIES = 8
 MAX_WAIT_SECONDS = 90
+NOT_A_TASK_BELOW = 0.15  # only a clear "no"; anything unsure still runs and can ask
 EMPTY_SCREEN_REREADS = 2
 EMPTY_SCREEN_WAIT_SECONDS = 1.5
 QUESTION_EXPIRES = 600
@@ -95,6 +96,7 @@ class Brain:
 
     async def run(self) -> None:
         try:
+            await self.screen_out_non_tasks()
             await self.read_screen()
             self.notebook.write("setup_done")
             while True:
@@ -122,6 +124,15 @@ class Brain:
             log.info("task %s: phone disconnected", self.task.id)
         finally:
             self.log_timing()
+
+    async def screen_out_non_tasks(self) -> None:
+        """Misheard speech ("It was.", "Yep.") ends here instead of costing a run and a clarifying question."""
+        started = time.monotonic()
+        likelihood = await self.ai.phone_task_likelihood(self.task.goal)
+        self.timing.ai += time.monotonic() - started
+        self.notebook.write("intake", phone_task=round(likelihood, 3), ms=round((time.monotonic() - started) * 1000))
+        if likelihood < NOT_A_TASK_BELOW:
+            raise TaskEnded("needs_user", f"I heard \"{self.task.goal}\" but not a task. Say it again?")
 
     async def decide_next_action(self):
         view = self.view

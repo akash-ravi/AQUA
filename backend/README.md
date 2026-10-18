@@ -13,7 +13,7 @@ python3.12 -m venv .venv
 cp .env.example .env          # then put your Anthropic key in .env (or run `ant auth login`)
 ```
 
-`.env` also picks the model (`JARVIS_MODEL`, default `claude-opus-5-5`) and effort (`JARVIS_EFFORT`, default `medium`).
+`.env` also picks the model (`JARVIS_MODEL`, default `claude-opus-5-5`) and effort (`JARVIS_EFFORT`, default `low`).
 Settings use a `JARVIS_` prefix because Claude Code exports its own `CLAUDE_*` variables.
 
 ## Run it with the real phone

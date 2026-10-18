@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import anthropic
 
 from src.config import Settings
+from src.ai.jev import Jev
 from src.ai.tools import TOOLS, tool_schemas
 
 log = logging.getLogger("jarvis.llm")
@@ -60,6 +61,11 @@ class AI:
         self.tools = tool_schemas()
         self.client = anthropic.AsyncAnthropic(api_key=key.get_secret_value() if key else None, max_retries=0,
                                                timeout=120)
+        jev_key = settings.typesafe_api_key
+        self.jev = Jev(jev_key.get_secret_value()) if jev_key else None
+
+    async def phone_task_likelihood(self, goal: str) -> float:
+        return await self.jev.phone_task_likelihood(goal) if self.jev else 1.0
 
     async def decide(self, system: str, message: str, *, image: bytes | None = None,
                      retry_note: str | None = None) -> Decision:
@@ -104,6 +110,8 @@ class AI:
                         cached_tokens=cached, output_tokens=usage.output_tokens)
 
     async def approves(self, question: str, reply: str) -> bool:
+        if self.jev:
+            return await self.jev.approves(question, reply)
         try:
             response = await self.client.beta.messages.create(
                 model=self.model,
