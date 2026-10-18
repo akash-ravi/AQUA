@@ -8,26 +8,19 @@ dependencies = [
     "uvicorn[standard]",
     "pydantic",
     "pydantic-settings",
-    "httpx",
     "anthropic",
-    "websockets",
     "pillow",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest",
-    "pytest-asyncio",
-]
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-pythonpath = ["."]
-testpaths = ["tests"]
+dashboard = ["streamlit", "pandas", "altair"]
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+[project.scripts]
+jarvis = "src.app:main"
+
 [tool.setuptools.packages.find]
-include = ["jarvis*"]
+include = ["src*"]
