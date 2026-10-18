@@ -41,8 +41,8 @@ async def run(start_server, ai, *, phone=None, answers=None, auto_yes=True, limi
 async def test_orders_pizza_after_approval(start_server, test_settings):
     done, phone = await run(start_server, FakeAI(list(FAKEDASH_SCRIPT)))
     assert done.outcome == "completed", done.summary
-    assert "Order placed!" in done.proof
     events = notebook_events(test_settings, done)
+    assert "Order placed!" in events[-1 - next(i for i, e in enumerate(reversed(events)) if e["event"] == "done")]["proof"]
     assert len(confirmed_taps(events)) == 1
     asks = [e for e in events if e["event"] == "ask" and e["kind"] == "confirm"]
     assert "$31.20" in asks[0]["text"] and "Place order" in asks[0]["text"]

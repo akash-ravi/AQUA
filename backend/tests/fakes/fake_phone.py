@@ -2,20 +2,19 @@ import asyncio
 import base64
 import inspect
 import io
+import json
+import re
 import time
-import uuid
 from collections import OrderedDict
 from typing import Any, Callable
 
+import httpx
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
 
 from tests.fakes.fakedash import APPS, DOORDASH, Built, Entry, FakeDash
-from jarvis.messages import (
-    ACTIONS, Answer, App, Ask, AskCancel, BadMessage, Command, Device, Done, ErrorInfo, Hello, Image,
-    LastResult, Node, Pause, Progress, Ready, Rejoin, Result, Resume, Screen, Stop, TaskRequest, Update,
-    parse_backend_message, to_json,
-)
+from jarvis.messages import ACTIONS, Answer, Ask, Command, Done, ErrorInfo, Image, Node, Result, Screen
+from jarvis.wire import COMMAND_NAMES
 
 MAX_FRAME = 16 * 1024 * 1024
 REMEMBERED_COMMANDS = 200
@@ -39,34 +38,24 @@ class FakePhone:
         self.loading_forever = loading_forever
         self.screenshots = screenshots
 
-        self.device_id = f"fake-{uuid.uuid4().hex[:12]}"
         self.task_id: str | None = None
-        self.rejoin_key: str | None = None
         self.screen_count = 0
         self.latest_id: str | None = None
         self.latest: Built | None = None
         self.approved: set[str] = set()
         self.used_asks: set[str] = set()
         self.results: OrderedDict[str, Result] = OrderedDict()
-        self.last_result: LastResult | None = None
         self.stopped = False
-        self.paused = False
-        self.revision_seen = 0
-        self.min_revision = 0
         self.drop_now = False
         self.outbox: asyncio.Queue = asyncio.Queue()
 
     @property
     def actions(self) -> list[str]:
-        return [action for action in ACTIONS if action != "screenshot" or self.screenshots]
+        return [action for action in (*ACTIONS, "list_apps") if action != "screenshot" or self.screenshots]
 
     @property
     def apps(self) -> list[App]:
         return [App(label=label, package_name=package) for package, label in APPS.items()]
-
-    def hello(self) -> Hello:
-        device = Device(id=self.device_id, name="Fake phone", sdk_int=36)
-        return Hello(protocol=1, device=device, app_version="fake", actions=self.actions, apps=self.apps)
 
     # ---- the user and the backend's other messages ----
 
@@ -78,25 +67,7 @@ class FakePhone:
 
     def user_stop(self) -> None:
         self.stopped = True
-        self.outbox.put_nowait(Stop())
-
-    def user_pause(self) -> None:
-        self.paused = True
-        self.outbox.put_nowait(Pause())
-
-    def user_resume(self) -> None:
-        self.paused = False
-        self.outbox.put_nowait(Resume())
-
-    def user_update(self, text: str) -> None:
-        self.outbox.put_nowait(Update(text=text))
-        self.sent_update()
-
-    def sent_update(self) -> None:
-        self.min_revision = self.revision_seen + 1
-
-    def saw_revision(self, revision: int) -> None:
-        self.revision_seen = max(self.revision_seen, revision)
+        self.outbox.put_nowait({"type": "stop"})
 
     # ---- commands ----
 
@@ -104,11 +75,11 @@ class FakePhone:
         if command.command_id in self.results:
             return self.results[command.command_id]
         result = self._run(command)
-        self.saw_revision(command.revision)
+        if command.action != "read_screen":
+            self.latest_id = None
         self.results[command.command_id] = result
         while len(self.results) > REMEMBERED_COMMANDS:
             self.results.popitem(last=False)
-        self.last_result = LastResult(command_id=command.command_id, status=result.status, error=result.error)
         return result
 
     def read_screen(self) -> Screen:
@@ -137,14 +108,11 @@ class FakePhone:
     def _run(self, command: Command) -> Result:
         if self.stopped:
             return self._reply(command, "rejected", "stopped", "the user pressed Stop")
-        if self.paused:
-            return self._reply(command, "rejected", "paused", "the user paused the task")
-        if command.revision < self.min_revision:
-            return self._reply(command, "rejected", "old_revision", "the user changed the task")
         if command.action not in self.actions:
             return self._reply(command, "rejected", "unsupported", f"this phone can't {command.action}")
         handlers: dict[str, Callable[[Command], Result]] = {
             "read_screen": lambda c: self._reply(c, "ok"),
+            "list_apps": lambda c: self._reply(c, "ok"),
             "tap": self._tap,
             "type_text": self._type_text,
             "scroll": self._scroll,
@@ -157,9 +125,8 @@ class FakePhone:
 
     def _reply(self, command: Command, status: str, code: str | None = None, message: str = "", **extra) -> Result:
         error = ErrorInfo(code=code, message=message) if code else None
-        settle_ms = 120 if command.action == "read_screen" else SETTLE_MS
-        return Result(command_id=command.command_id, status=status, error=error, settled=True, settle_ms=settle_ms,
-                      screen=self.read_screen(), **extra)
+        screen = self.read_screen() if command.action == "read_screen" else None
+        return Result(command_id=command.command_id, status=status, error=error, settled=True, screen=screen, **extra)
 
     def _stale(self, command: Command) -> str | None:
         if self.latest is None or command.screen_id != self.latest_id:
@@ -180,8 +147,6 @@ class FakePhone:
     def _tap(self, command: Command) -> Result:
         if code := self._stale(command):
             return self._reply(command, "rejected", code, STALE_MESSAGES[code])
-        if command.confirmed and (problem := self._confirm_problem(command)):
-            return self._reply(command, "rejected", *problem)
         index = _nearest(self.latest, command.target, lambda node: node.clickable)
         if index is None:
             if command.confirmed:
@@ -193,8 +158,6 @@ class FakePhone:
             return self._reply(command, "rejected", "stale_target", STALE_MESSAGES["stale_target"])
         if not entry.el.enabled:
             return self._reply(command, "rejected", "disabled", "that button is disabled")
-        if command.confirmed:
-            self.used_asks.add(command.ask_id)
         labels = _labels(self.latest, index)
         failed = next((label for label in self.fail_once if label.casefold() in labels), None)
         if failed:
@@ -209,15 +172,6 @@ class FakePhone:
                                acted_on=index, method="action")
         return self._reply(command, "ok", acted_on=index, method="action")
 
-    def _confirm_problem(self, command: Command) -> tuple[str, str] | None:
-        if command.ask_id not in self.approved or command.ask_id in self.used_asks:
-            return "not_approved", "no matching Yes from the user"
-        shown = [t.casefold() for node in self.app.snapshot().nodes() for t in (node.text, node.description) if t]
-        missing = [s for s in command.must_see or [] if not any(s.casefold() in t for t in shown)]
-        if missing:
-            return "must_see_missing", f"not on screen: {', '.join(missing)}"
-        return None
-
     def _type_text(self, command: Command) -> Result:
         if code := self._stale(command):
             return self._reply(command, "rejected", code, STALE_MESSAGES[code])
@@ -227,9 +181,7 @@ class FakePhone:
         if not el.enabled:
             return self._reply(command, "rejected", "disabled", "that text box is disabled")
         el.typed(command.text or "")
-        if command.submit:
-            if el.submit is None:
-                return self._reply(command, "failed", "cant_submit", "text entered; Enter not available here")
+        if el.submit is not None:  # the wire has no Enter key, so the fake search box searches as you type
             el.submit()
         return self._reply(command, "ok")
 
@@ -266,8 +218,12 @@ class FakePhone:
         if self.black_screenshot:
             return self._reply(command, "failed", "screenshot_blocked", "the screen came back black")
         result = self._reply(command, "ok")
-        result.image = _draw(result.screen, command.max_side or 1280)
+        result.image = _draw(self.screenshot_screen(), command.max_side or 720)
         return result
+
+    def screenshot_screen(self) -> Screen:
+        built = self.app.snapshot()
+        return Screen(screen_id="shot", package_name=built.package, width=1080, height=2400, nodes=built.nodes())
 
 
 STALE_MESSAGES = {
@@ -331,66 +287,130 @@ AnswerSource = Callable[[Ask], Any] | list | None
 
 
 async def run_fake_phone(url: str, task_text: str, *, phone: FakePhone | None = None, answers: AnswerSource = None,
-                         auto_yes: bool = False, on_event: Callable[[Any], Any] | None = None,
-                         device_id: str | None = None, rejoin: Rejoin | None = None) -> Done | None:
+                         auto_yes: bool = False, on_event: Callable[[Any], Any] | None = None) -> Done | None:
     phone = phone or FakePhone()
-    if device_id:
-        phone.device_id = device_id
     if isinstance(answers, list):
         answers = list(answers)
     emit = on_event or (lambda message: None)
     open_asks: dict[str, asyncio.Task] = {}
+    summary: str | None = None
 
     async with connect(url, max_size=MAX_FRAME, proxy=None) as socket:
         sender = asyncio.create_task(_send_outbox(socket, phone))
         try:
-            await socket.send(to_json(phone.hello()))
-            await socket.send(to_json(rejoin or TaskRequest(text=task_text)))
+            start = {"type": "start", "task": task_text, "device": {"width": 1080, "height": 2400, "sdk": 36}}
+            await socket.send(json.dumps(start))
             async for raw in socket:
-                try:
-                    message = parse_backend_message(raw)
-                except BadMessage:
-                    continue
-                if isinstance(message, Command):
-                    result = phone.handle(message)
+                message = json.loads(raw)
+                if message["type"] == "command":
+                    command = _command_from_wire(message)
+                    await _learn_task_id(phone, url)
+                    result = phone.handle(command)
                     if phone.drop_now:
                         phone.drop_now = False
                         socket.transport.abort()
                         return None
+                    outcome = emit(command)
+                    if inspect.isawaitable(outcome):
+                        await outcome
                     if phone.late_result:
                         await asyncio.sleep(phone.late_result)
+                    if result.status == "unknown":
+                        continue
                     try:
-                        await socket.send(to_json(result))
+                        await socket.send(json.dumps(_result_to_wire(result, command, phone)))
                     except ConnectionClosed:
                         pass  # still read whatever the backend sent before closing
                     continue
-                if isinstance(message, (Ready, Progress)):
-                    phone.saw_revision(message.revision)
-                if isinstance(message, Ready):
-                    phone.task_id, phone.rejoin_key = message.task_id, message.rejoin_key
-                if isinstance(message, Ask):
-                    open_asks[message.ask_id] = asyncio.create_task(_answer(socket, phone, message, answers, auto_yes))
-                if isinstance(message, AskCancel) and message.ask_id in open_asks:
-                    open_asks.pop(message.ask_id).cancel()
-                outcome = emit(message)
-                if inspect.isawaitable(outcome):
-                    await outcome
-                if isinstance(message, Done):
-                    return message
+                if message["type"] == "ask":
+                    ask = _ask_from_wire(message)
+                    open_asks[ask.ask_id] = asyncio.create_task(_answer(socket, phone, ask, answers, auto_yes))
+                    outcome = emit(ask)
+                    if inspect.isawaitable(outcome):
+                        await outcome
+                if message["type"] in ("done", "error"):
+                    summary = message.get("summary") or message.get("message") or ""
         except ConnectionClosed:
             return None
         finally:
             sender.cancel()
             for task in open_asks.values():
                 task.cancel()
-    return None
+    return await _finished(phone, url, summary or "") if phone.task_id else None
+
+
+async def _learn_task_id(phone: FakePhone, url: str) -> None:
+    if phone.task_id:
+        return
+    async with httpx.AsyncClient(base_url=url.replace("ws://", "http://").removesuffix("/agent")) as client:
+        running = (await client.get("/status")).json()["running"]
+    phone.task_id = running[0]["task_id"] if running else None
+
+
+async def _finished(phone: FakePhone, url: str, summary: str) -> Done:
+    base_url = url.replace("ws://", "http://").removesuffix("/agent")
+    async with httpx.AsyncClient(base_url=base_url) as client:
+        for _ in range(100):
+            tasks = (await client.get("/tasks", params={"limit": 1})).json()["tasks"]
+            if not tasks:
+                return Done.model_construct(task_id="", outcome="unknown", summary=summary)
+            if tasks[0]["status"] != "running":
+                break
+            await asyncio.sleep(0.02)
+    phone.task_id = tasks[0]["task_id"]
+    return Done(task_id=tasks[0]["task_id"], outcome=tasks[0]["status"], summary=summary)
+
+
+def _command_from_wire(message: dict) -> Command:
+    action = next(action for action, name in COMMAND_NAMES.items() if name == message["name"])
+    args = message["args"]
+    return Command(command_id=message["id"], action=action, screen_id=args.get("screenId"), target=args.get("index"),
+                   text=args.get("text"), direction=args.get("direction"), package_name=args.get("name"),
+                   confirmed=args.get("confirmed"), max_side=args.get("maxWidth"))
+
+
+def _ask_from_wire(message: dict) -> Ask:
+    question = message["question"]
+    found = re.search(r" \((.+ / .+)\)$", question)
+    kind = "confirm" if found and found.group(1) == "Yes / No" else "question"
+    return Ask(ask_id=message["id"], kind=kind, text=question)
+
+
+def _result_to_wire(result: Result, command: Command, phone: FakePhone) -> dict:
+    if result.status != "ok":
+        error = result.error
+        wire = {"type": "result", "id": result.command_id, "ok": False, "error": WIRE_ERRORS.get(error.code, "actionFailed"),
+                "message": error.message}
+        return wire
+    data: dict = {}
+    if command.action == "read_screen":
+        data = {"screenId": result.screen.screen_id, "package": result.screen.package_name,
+                "nodes": [_node_to_wire(node) for node in result.screen.nodes]}
+    elif command.action == "screenshot":
+        data = {"png": result.image.data, "width": result.image.width, "height": result.image.height}
+    elif command.action == "list_apps":
+        data = {"apps": [{"label": label, "package": package} for package, label in APPS.items()]}
+    return {"type": "result", "id": result.command_id, "ok": True, "data": data}
+
+
+def _node_to_wire(node: Node) -> dict:
+    return {"index": node.index, "class": node.class_name, "text": node.text or node.hint, "desc": node.description,
+            "id": node.resource_id, "bounds": list(node.bounds), "clickable": node.clickable,
+            "editable": node.editable, "scrollable": node.scrollable,
+            "checked": node.checked if node.checkable else None}
+
+
+WIRE_ERRORS = {
+    "stale_screen": "staleScreen", "stale_target": "nodeNotFound", "bad_target": "nodeNotFound",
+    "app_not_found": "appNotFound", "screenshot_blocked": "secureWindow", "stopped": "actionFailed",
+}
 
 
 async def _send_outbox(socket, phone: FakePhone) -> None:
     while True:
         message = await phone.outbox.get()
         try:
-            await socket.send(to_json(message))
+            await socket.send(json.dumps(message))
         except ConnectionClosed:
             return
 
@@ -403,33 +423,23 @@ async def _answer(socket, phone: FakePhone, ask: Ask, answers: AnswerSource, aut
     elif isinstance(answers, list):
         value = answers.pop(0) if answers else None
     elif auto_yes:
-        value = True if ask.kind == "confirm" else (ask.choices[0] if ask.choices else "yes")
+        value = True if ask.kind == "confirm" else "yes"
     else:
         value = None
-    answer = _as_answer(ask, value)
-    if answer is None:
+    text = _answer_text(value)
+    if text is None:
         return
-    if ask.kind == "confirm" and answer.approved is not None:
-        phone.record_answer(ask.ask_id, answer.approved)
     try:
-        await socket.send(to_json(answer))
+        await socket.send(json.dumps({"type": "answer", "id": ask.ask_id, "text": text}))
     except ConnectionClosed:
         pass
 
 
-def _as_answer(ask: Ask, value: Any) -> Answer | None:
+def _answer_text(value: Any) -> str | None:
     if value is None:
         return None
     if isinstance(value, Answer):
-        return value.model_copy(update={"ask_id": ask.ask_id})
+        value = value.text if value.text is not None else value.approved
     if isinstance(value, bool):
-        return Answer(ask_id=ask.ask_id, approved=value)
-    reply = str(value).strip()
-    if ask.kind == "confirm" and reply.casefold() in ("y", "yes", "n", "no", ""):
-        return Answer(ask_id=ask.ask_id, approved=reply.casefold() in ("y", "yes"))
-    if ask.kind == "question" and ask.choices and reply.isdigit() and 1 <= int(reply) <= len(ask.choices):
-        reply = ask.choices[int(reply) - 1]
-    return Answer(ask_id=ask.ask_id, text=reply)
-
-
-
+        return "yes" if value else "no"
+    return str(value)

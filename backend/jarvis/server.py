@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, WebSocket
 from fastapi.responses import PlainTextResponse
 
 from jarvis.config import Settings, load_settings
-from jarvis.messages import Done, Ready, Rejoin, Result, new_id, new_rejoin_key
+from jarvis.messages import Done, Result, new_id
 from jarvis.phone import Interrupted, PhoneGone, PhoneLink, new_command
 from jarvis.screen import render
 from jarvis.task import is_task_id, list_tasks, task_story
@@ -25,7 +25,6 @@ PROTOCOL = 1
 class Run:
     device_id: str
     task_id: str
-    rejoin_key: str
     goal: str
     link: PhoneLink
     settings: Settings
@@ -40,8 +39,7 @@ def create_app(
     *,
     smoke: bool = False,
     run_task: RunTask | None = None,
-    hello_seconds: float = 10.0,
-    task_seconds: float = 60.0,
+    start_seconds: float = 10.0,
 ) -> FastAPI:
     app = FastAPI()
     runs: dict[str, Run] = {}
@@ -95,7 +93,7 @@ def create_app(
         await websocket.accept()
         link = PhoneLink(websocket)
         try:
-            await handle_phone(link, settings, runs, routine, smoke, hello_seconds, task_seconds)
+            await handle_phone(link, settings, runs, routine, websocket.client.host if websocket.client else "", start_seconds)
         except PhoneGone:
             log.info("The phone disconnected.")
         finally:
@@ -109,36 +107,22 @@ async def handle_phone(
     settings: Settings,
     runs: dict[str, Run],
     routine: RunTask | None,
-    smoke: bool,
-    hello_seconds: float,
-    task_seconds: float,
+    device_id: str,
+    start_seconds: float,
 ) -> None:
-    hello = await wait_for_message(link, ("hello",), hello_seconds)
-    if hello is None:
-        return
-    if hello.protocol != PROTOCOL:
-        await link.fail("protocol_version", f"This backend speaks protocol {PROTOCOL}; the phone sent {hello.protocol}.")
-        return
-    request = await wait_for_message(link, ("task", "rejoin"), task_seconds)
-    if request is None:
-        return
-    device_id = hello.device.id
-    if isinstance(request, Rejoin):
-        await rejoin(link, hello, request, settings, runs, None if smoke else routine)
+    start = await wait_for_message(link, ("start",), start_seconds)
+    if start is None:
         return
     if routine is None:
         await link.fail("server_error", "the brain is not built yet")
         return
-    if device_id in runs:
-        await link.fail("busy", "Another task is running on this phone.", task_id=runs[device_id].task_id)
-        return
 
-    run = Run(device_id, new_id("t"), new_rejoin_key(), request.text, link, settings)
-    runs[device_id] = run
-    log.info("New task %s from %s.", run.task_id, hello.device.name or device_id)
+    run = Run(device_id, new_id("t"), start.task, link, settings)
+    runs[run.task_id] = run
+    log.info("New task %s from %s.", run.task_id, device_id)
     try:
-        link.start(hello)
-        await link.send(Ready(task_id=run.task_id, rejoin_key=run.rejoin_key, revision=link.revision))
+        link.start(start)
+        await link.load_apps()
         run.job = asyncio.create_task(routine(run))
         await run.job
     except PhoneGone:
@@ -149,45 +133,7 @@ async def handle_phone(
     finally:
         if run.job and not run.job.done():
             run.job.cancel()
-        if runs.get(device_id) is run:
-            del runs[device_id]
-
-
-async def rejoin(link: PhoneLink, hello, request: Rejoin, settings: Settings, runs: dict[str, Run],
-                 routine: RunTask | None) -> None:
-    device_id = hello.device.id
-    if routine is None:
-        await link.fail("task_not_found", "That task is not running here.")
-        return
-    old = runs.get(device_id)
-    if old and old.task_id != request.task_id:
-        await link.fail("busy", "Another task is running on this phone.", task_id=old.task_id)
-        return
-    if old:
-        log.info("Task %s: the phone came back on a new connection; closing the old one.", old.task_id)
-        await old.link.close(1001)
-        if old.job and not old.job.done():
-            old.job.cancel()
-            await asyncio.wait({old.job})
-    run = Run(device_id, request.task_id, request.rejoin_key, "", link, settings)
-    runs[device_id] = run
-    log.info("Task %s: the phone rejoined.", run.task_id)
-    try:
-        link.start(hello)
-        run.job = asyncio.create_task(routine(run, rejoin=request))
-        await run.job
-    except PhoneGone:
-        log.info("Task %s: the phone disconnected again.", run.task_id)
-    except asyncio.CancelledError:
-        raise
-    except Exception:
-        log.exception("Task %s crashed.", run.task_id)
-        await link.fail("server_error", "Something went wrong on the Mac.", task_id=run.task_id)
-    finally:
-        if run.job and not run.job.done():
-            run.job.cancel()
-        if runs.get(device_id) is run:
-            del runs[device_id]
+        runs.pop(run.task_id, None)
 
 
 async def wait_for_message(link: PhoneLink, wanted: tuple[str, ...], seconds: float):
@@ -213,7 +159,7 @@ async def run_smoke(run: Run) -> Done:
             print(f"Skipped {action}: the phone doesn't offer it.")
             return
         await link.progress("running", text, answered + 1)
-        result = await link.run(new_command(action, link.revision, **fields))
+        result = await link.run(new_command(action, **fields))
         if not (result.error and result.error.code == "no_result"):
             answered += 1
         print_result(action, result, link.apps, show)

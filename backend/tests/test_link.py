@@ -6,18 +6,11 @@ import pytest
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
-from jarvis.messages import ACTIONS, Done, Result
+from jarvis.messages import Done, Result
 from jarvis.phone import Interrupted, new_command
 
-APPS = [{"label": "DoorDash", "package_name": "com.dd.doordash"}]
-
-
-def hello(device_id: str = "fake-test", protocol: int = 1) -> str:
-    return json.dumps({"type": "hello", "protocol": protocol, "device": {"id": device_id}, "actions": list(ACTIONS), "apps": APPS})
-
-
-def task(text: str = "order a pizza") -> str:
-    return json.dumps({"type": "task", "text": text})
+APPS = [{"label": "DoorDash", "package": "com.dd.doordash"}]
+START = {"type": "start", "task": "order a pizza", "device": {"width": 1080, "height": 2400, "sdk": 36}}
 
 
 async def receive(ws, seconds: float = 3) -> dict:
@@ -31,12 +24,11 @@ async def closed_code(ws, seconds: float = 3) -> int | None:
     return ws.close_code
 
 
-async def start_task(ws, device_id: str = "fake-test") -> dict:
-    await ws.send(hello(device_id))
-    await ws.send(task())
-    ready = await receive(ws)
-    assert ready["type"] == "ready"
-    return ready
+async def start_task(ws) -> None:
+    await ws.send(json.dumps(START))
+    listing = await receive(ws)
+    assert listing["type"] == "command" and listing["name"] == "listApps"
+    await ws.send(json.dumps({"type": "result", "id": listing["id"], "ok": True, "data": {"apps": APPS}}))
 
 
 async def finish(run, outcome: str = "completed", summary: str = "ok") -> Done:
@@ -72,7 +64,6 @@ async def test_smoke_routine_with_fake_phone(start_server, capsys):
     events = []
     done = await run_fake_phone(server.url, "smoke test", auto_yes=True, on_event=events.append)
     assert done is not None
-    assert done.outcome == "completed"
     assert done.summary == "Smoke test passed: the phone answered 4 commands."
     printed = capsys.readouterr().out
     assert "open_app: ok" in printed
@@ -87,47 +78,71 @@ async def test_origin_header_refused(start_server):
     assert refused.value.response.status_code == 403
 
 
+async def test_apps_are_listed_first_and_done_is_just_a_summary(start_server):
+    seen: dict = {}
+
+    async def routine(run):
+        seen["apps"] = dict(run.link.apps)
+        seen["goal"] = run.goal
+        return await finish(run, summary="Burrito added to cart")
+
+    server = await start_server(run_task=routine)
+    async with connect(server.url) as ws:
+        await start_task(ws)
+        assert await receive(ws) == {"type": "done", "summary": "Burrito added to cart"}
+        assert await closed_code(ws) == 1000
+    assert seen == {"apps": {"com.dd.doordash": "DoorDash"}, "goal": "order a pizza"}
+
+
+async def test_commands_use_the_phone_names_and_args(start_server):
+    seen: list[Result] = []
+
+    async def routine(run):
+        seen.append(await run.link.run(new_command("read_screen")))
+        screen_id = seen[0].screen.screen_id
+        seen.append(await run.link.run(new_command("tap", screen_id=screen_id, target=4, confirmed=True)))
+        seen.append(await run.link.run(new_command("open_app", package_name="com.dd.doordash")))
+        return await finish(run)
+
+    server = await start_server(run_task=routine)
+    async with connect(server.url) as ws:
+        await start_task(ws)
+        read = await receive(ws)
+        assert read["name"] == "readScreen" and read["args"] == {}
+        nodes = [{"index": 0, "class": "Button", "text": "Pay", "desc": None, "id": None, "bounds": [0, 0, 100, 50],
+                  "clickable": True, "editable": False, "scrollable": False, "checked": None}]
+        await ws.send(json.dumps({"type": "result", "id": read["id"], "ok": True,
+                                  "data": {"screenId": "s7", "package": "com.dd.doordash", "nodes": nodes}}))
+        click = await receive(ws)
+        assert click["name"] == "click" and click["args"] == {"screenId": "s7", "index": 4, "confirmed": True}
+        await ws.send(json.dumps({"type": "result", "id": click["id"], "ok": False, "error": "staleScreen",
+                                  "message": "old"}))
+        opened = await receive(ws)
+        assert opened["name"] == "openApp" and opened["args"] == {"name": "com.dd.doordash"}
+        await ws.send(json.dumps({"type": "result", "id": opened["id"], "ok": True, "data": {}}))
+        assert (await receive(ws))["type"] == "done"
+
+    screen = seen[0].screen
+    assert screen.package_name == "com.dd.doordash" and screen.width == 1080 and screen.nodes[0].text == "Pay"
+    assert seen[1].status == "rejected" and seen[1].error.code == "stale_screen"
+    assert seen[2].status == "ok"
+
+
+async def test_start_timeout_closes(start_server):
+    server = await start_server(run_task=finish_now, start_seconds=0.3)
+    async with connect(server.url) as ws:
+        error = await receive(ws)
+        assert error["type"] == "error"
+        assert await closed_code(ws) == 1000
+
+
 async def test_bad_json_is_not_fatal(start_server):
     server = await start_server(run_task=finish_now)
     async with connect(server.url) as ws:
         await ws.send("{not json")
-        error = await receive(ws)
-        assert error == {"type": "error", "code": "bad_message", "message": "not valid JSON", "fatal": False}
+        assert (await receive(ws))["type"] == "error"
         await start_task(ws)
         assert (await receive(ws))["type"] == "done"
-        assert await closed_code(ws) == 1000
-
-
-async def test_wrong_stage_gets_error(start_server):
-    server = await start_server(run_task=wait_for_stop)
-    async with connect(server.url) as ws:
-        await ws.send(task())
-        error = await receive(ws)
-        assert error["code"] == "unexpected_message" and error["fatal"] is False
-        await start_task(ws)
-        await ws.send(hello())
-        error = await receive(ws)
-        assert error["code"] == "unexpected_message" and error["fatal"] is False
-        await ws.send(json.dumps({"type": "stop"}))
-        done = await receive(ws)
-        assert done["type"] == "done" and done["outcome"] == "stopped"
-
-
-async def test_hello_timeout_closes(start_server):
-    server = await start_server(run_task=finish_now, hello_seconds=0.3)
-    async with connect(server.url) as ws:
-        error = await receive(ws)
-        assert error["code"] == "timeout" and error["fatal"] is True
-        assert await closed_code(ws) == 1000
-
-
-async def test_wrong_protocol_is_fatal(start_server):
-    server = await start_server(run_task=finish_now)
-    async with connect(server.url) as ws:
-        await ws.send(hello(protocol=2))
-        error = await receive(ws)
-        assert error["code"] == "protocol_version" and error["fatal"] is True
-        await closed_code(ws)
 
 
 async def test_binary_frame_closes(start_server):
@@ -143,7 +158,7 @@ async def test_five_bad_messages_close(start_server):
         for _ in range(5):
             await ws.send("nope")
         for _ in range(4):
-            assert (await receive(ws))["code"] == "bad_message"
+            assert (await receive(ws))["type"] == "error"
         assert await closed_code(ws) == 1003
 
 
@@ -157,7 +172,7 @@ async def test_result_timeout_then_late_result(start_server):
             late_arrived.set()
 
         run.link.on_late_result = on_late
-        command = new_command("read_screen", run.link.revision).model_copy(update={"timeout_ms": 100})
+        command = new_command("go_home").model_copy(update={"timeout_ms": 100})
         seen["command_id"] = command.command_id
         seen["result"] = await run.link.run(command, grace=0.1)
         await asyncio.wait_for(late_arrived.wait(), 3)
@@ -167,139 +182,110 @@ async def test_result_timeout_then_late_result(start_server):
     async with connect(server.url) as ws:
         await start_task(ws)
         command = await receive(ws)
-        assert command["type"] == "command" and command["action"] == "read_screen"
         await asyncio.sleep(0.5)
-        await ws.send(json.dumps({"type": "result", "command_id": command["command_id"], "status": "ok"}))
+        await ws.send(json.dumps({"type": "result", "id": command["id"], "ok": True, "data": {}}))
         assert (await receive(ws))["type"] == "done"
 
-    assert seen["result"].status == "unknown"
-    assert seen["result"].error.code == "no_result"
-    assert seen["late"].command_id == seen["command_id"]
-    assert seen["late"].status == "ok"
+    assert seen["result"].status == "unknown" and seen["result"].error.code == "no_result"
+    assert seen["late"].command_id == seen["command_id"] and seen["late"].status == "ok"
 
 
 async def test_result_for_unknown_command_is_ignored(start_server):
     seen: dict = {}
 
     async def routine(run):
-        seen["result"] = await run.link.run(new_command("go_home", run.link.revision))
+        seen["result"] = await run.link.run(new_command("go_home"))
         return await finish(run)
 
     server = await start_server(run_task=routine)
     async with connect(server.url) as ws:
         await start_task(ws)
         command = await receive(ws)
-        await ws.send(json.dumps({"type": "result", "command_id": "c-nobody", "status": "failed"}))
-        await ws.send(json.dumps({"type": "result", "command_id": command["command_id"], "status": "ok"}))
+        await ws.send(json.dumps({"type": "result", "id": "c-nobody", "ok": False, "error": "actionFailed"}))
+        await ws.send(json.dumps({"type": "result", "id": command["id"], "ok": True, "data": {}}))
         assert (await receive(ws))["type"] == "done"
     assert seen["result"].status == "ok"
 
 
-async def test_no_command_sent_after_stop(start_server):
+async def test_stop_from_the_phone_closes_without_done(start_server):
+    server = await start_server(run_task=wait_for_stop)
+    async with connect(server.url) as ws:
+        await start_task(ws)
+        await ws.send(json.dumps({"type": "stop"}))
+        assert await closed_code(ws) == 1000
+
+
+async def test_no_command_is_sent_after_stop(start_server):
     seen: dict = {}
 
     async def routine(run):
-        await run.link.wait_changed()
-        try:
-            await run.link.run(new_command("go_home", run.link.revision))
-        except Interrupted as stopped:
-            seen["reason"] = stopped.reason
+        await asyncio.sleep(0.3)
+        with pytest.raises(Interrupted):
+            await run.link.run(new_command("go_home"))
+        seen["stopped"] = run.link.stop_requested
         return await finish(run, "stopped", "stopped")
 
     server = await start_server(run_task=routine)
     async with connect(server.url) as ws:
         await start_task(ws)
         await ws.send(json.dumps({"type": "stop"}))
-        assert (await receive(ws))["type"] == "done"
-    assert seen["reason"] == "stopped"
+        assert await closed_code(ws) == 1000
+    assert seen["stopped"] is True
 
 
-async def test_ask_answered(start_server):
+async def test_confirm_question_is_a_plain_question_and_yes_approves(start_server):
     seen: dict = {}
 
     async def routine(run):
-        seen["outcome"] = await run.link.ask("confirm", "Place order?", ["Yes", "No"], 30)
+        seen["outcome"] = await run.link.ask("confirm", "Place order for $14.20?", ["Yes", "No"])
         return await finish(run)
 
     server = await start_server(run_task=routine)
     async with connect(server.url) as ws:
         await start_task(ws)
         ask = await receive(ws)
-        assert ask["type"] == "ask" and ask["kind"] == "confirm"
-        await ws.send(json.dumps({"type": "answer", "ask_id": "q-other", "approved": True}))
-        await ws.send(json.dumps({"type": "answer", "ask_id": ask["ask_id"], "approved": True}))
+        assert ask["type"] == "ask" and ask["question"] == "Place order for $14.20? (Yes / No)"
+        await ws.send(json.dumps({"type": "answer", "id": ask["id"], "text": "yes"}))
         assert (await receive(ws))["type"] == "done"
     assert seen["outcome"].status == "approved"
 
 
-async def test_stop_cancels_open_ask(start_server):
-    seen: dict = {}
+async def test_other_answers_to_a_confirm_are_text_or_no(start_server):
+    seen: list = []
 
     async def routine(run):
-        seen["outcome"] = await run.link.ask("question", "Which size?", ["Small", "Large"], 30)
-        return await finish(run, "stopped", "stopped")
+        for _ in range(2):
+            seen.append(await run.link.ask("confirm", "Order?", ["Yes", "No"]))
+        return await finish(run)
 
     server = await start_server(run_task=routine)
     async with connect(server.url) as ws:
         await start_task(ws)
-        ask = await receive(ws)
-        await ws.send(json.dumps({"type": "stop"}))
-        cancel = await receive(ws)
-        assert cancel == {"type": "ask_cancel", "ask_id": ask["ask_id"], "reason": "stopped"}
+        for reply in ("no", "make it two"):
+            ask = await receive(ws)
+            await ws.send(json.dumps({"type": "answer", "id": ask["id"], "text": reply}))
         assert (await receive(ws))["type"] == "done"
-    assert seen["outcome"].status == "cancelled"
+    assert [(o.status, o.text) for o in seen] == [("declined", ""), ("text", "make it two")]
 
 
 async def test_ask_expires(start_server):
     seen: dict = {}
 
     async def routine(run):
-        seen["outcome"] = await run.link.ask("question", "Which size?", None, 0)
+        seen["outcome"] = await run.link.ask("question", "Which size?", expires_in=1)
         return await finish(run)
 
     server = await start_server(run_task=routine)
     async with connect(server.url) as ws:
         await start_task(ws)
-        ask = await receive(ws)
-        cancel = await receive(ws)
-        assert cancel == {"type": "ask_cancel", "ask_id": ask["ask_id"], "reason": "expired"}
+        assert (await receive(ws))["type"] == "ask"
+        assert (await receive(ws, 3))["type"] == "done"
     assert seen["outcome"].status == "expired"
-
-
-async def test_busy_device(start_server):
-    server = await start_server(run_task=wait_for_stop)
-    async with connect(server.url) as first:
-        ready = await start_task(first)
-        assert "fake-test" in server.runs
-        async with connect(server.url) as second:
-            await second.send(hello())
-            await second.send(task())
-            error = await receive(second)
-            assert error["code"] == "busy" and error["fatal"] is True
-            assert error["task_id"] == ready["task_id"]
-        await first.send(json.dumps({"type": "stop"}))
-        assert (await receive(first))["type"] == "done"
-    await asyncio.sleep(0.1)
-    assert server.runs == {}
 
 
 async def test_brain_not_built_yet(start_server):
     server = await start_server()
     async with connect(server.url) as ws:
-        await ws.send(hello())
-        await ws.send(task())
-        error = await receive(ws)
-        assert error["code"] == "server_error" and error["fatal"] is True
-        assert error["message"] == "the brain is not built yet"
-
-
-async def test_rejoin_unknown_task(start_server):
-    from jarvis.brain import brain_runner
-    from tests.fakes.fake_ai import FakeAI
-
-    server = await start_server(run_task=brain_runner(FakeAI([])))
-    async with connect(server.url) as ws:
-        await ws.send(hello())
-        await ws.send(json.dumps({"type": "rejoin", "task_id": "t-x", "rejoin_key": "k"}))
-        error = await receive(ws)
-        assert error["code"] == "task_not_found" and error["fatal"] is True
+        await ws.send(json.dumps(START))
+        assert (await receive(ws))["type"] == "error"
+        assert await closed_code(ws) == 1000

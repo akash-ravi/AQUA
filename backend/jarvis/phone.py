@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -8,27 +9,25 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 from jarvis.messages import (
+    ACTIONS,
     Answer,
     Ask,
-    AskCancel,
     BadMessage,
     Command,
     Done,
     ErrorInfo,
     ErrorMessage,
-    Hello,
     Message,
-    Pause,
     Progress,
     Result,
-    Resume,
+    Start,
     Stop,
-    Update,
+    WireResult,
     clean_screen,
     new_id,
     parse_phone_message,
-    to_json,
 )
+from jarvis.wire import message_to_wire, result_from_wire
 
 log = logging.getLogger("jarvis.phone")
 
@@ -36,6 +35,8 @@ MAX_BAD_MESSAGES = 5
 TIMEOUT_MS = {"read_screen": 5_000, "open_app": 15_000, "screenshot": 8_000}
 DEFAULT_TIMEOUT_MS = 10_000
 ASK_CANCEL_REASONS = {"stopped": "stopped", "paused": "paused", "updated": "replaced"}
+YES_WORDS = {"yes", "y", "yeah", "yep", "ok", "okay", "sure", "confirm", "approve", "go ahead"}
+NO_WORDS = {"no", "n", "nope", "cancel", "stop", "don't"}
 
 
 class Interrupted(Exception):
@@ -57,19 +58,21 @@ class AskOutcome:
     reason: str = ""  # for cancelled: stopped | paused | replaced
 
 
-def new_command(action: str, revision: int = 0, **fields) -> Command:
+def new_command(action: str, **fields) -> Command:
     timeout_ms = TIMEOUT_MS.get(action, DEFAULT_TIMEOUT_MS)
-    return Command(command_id=new_id("c"), action=action, revision=revision, timeout_ms=timeout_ms, **fields)
+    return Command(command_id=new_id("c"), action=action, timeout_ms=timeout_ms, **fields)
 
 
 class PhoneLink:
     def __init__(self, websocket: WebSocket):
         self.ws = websocket
-        self.hello: Hello | None = None
-        self.actions: set[str] = set()
+        self.width = 0
+        self.height = 0
+        self.actions: set[str] = set(ACTIONS)
         self.apps: dict[str, str] = {}
         self.revision = 0
         self.stop_requested = False
+        self.stopped_by_phone = False
         self.pause_requested = False
         self.changed = asyncio.Event()
         self.gone = False
@@ -78,18 +81,23 @@ class PhoneLink:
         self.last_progress: Progress | None = None
         self.bad_messages = 0
         self._updates: list[str] = []
-        self._open_command: tuple[str, asyncio.Future] | None = None
-        self._open_ask: tuple[str, asyncio.Future] | None = None
-        self._late_ids: set[str] = set()
+        self._open_command: tuple[str, asyncio.Future, Command] | None = None
+        self._open_ask: tuple[str, asyncio.Future, str] | None = None
+        self._late_commands: dict[str, Command] = {}
         self._send_lock = asyncio.Lock()
         self._poke = asyncio.Event()  # replaced on every change so each waiter sees one pulse
         self._reader: asyncio.Task | None = None
 
-    def start(self, hello: Hello) -> None:
-        self.hello = hello
-        self.actions = set(hello.actions)
-        self.apps = {app.package_name: app.label for app in hello.apps}
+    def start(self, start: Start) -> None:
+        self.width, self.height = start.device.width, start.device.height
         self._reader = asyncio.create_task(self._read())
+
+    async def load_apps(self) -> None:
+        result = await self.run(new_command("list_apps"))
+        if result.apps is None:
+            log.info("The phone did not list its apps (%s).", result.error.code if result.error else result.status)
+            return
+        self.apps = {app.package_name: app.label for app in result.apps}
 
     async def receive(self):
         """Next valid phone message, or None once the socket is gone. Bad frames are answered here."""
@@ -128,19 +136,22 @@ class PhoneLink:
                 check()
             if self.gone or self.closed:
                 raise PhoneGone()
+            payload = message_to_wire(message)
+            if payload is None:
+                return
             try:
-                await self.ws.send_text(to_json(message))
+                await self.ws.send_text(json.dumps(payload))
             except (OSError, RuntimeError, WebSocketDisconnect):
                 self._mark_gone()
                 raise PhoneGone() from None
 
-    async def send_error(self, code: str, message: str, *, fatal: bool = False, task_id: str | None = None) -> None:
-        await self.send(ErrorMessage(code=code, message=message, fatal=fatal, task_id=task_id))
+    async def send_error(self, code: str, message: str, *, task_id: str | None = None) -> None:
+        await self.send(ErrorMessage(code=code, message=message, task_id=task_id))
 
     async def run(self, command: Command, *, grace: float = 5.0) -> Result:
         assert self._open_command is None, "a command is already open"
         future = asyncio.get_running_loop().create_future()
-        self._open_command = (command.command_id, future)
+        self._open_command = (command.command_id, future, command)
         try:
             await self.send(command, check=lambda: self._check_can_send(command))
             try:
@@ -148,7 +159,7 @@ class PhoneLink:
                 return await asyncio.wait_for(asyncio.shield(future), command.timeout_ms / 1000 + grace)
             except TimeoutError:
                 log.info("No result for %s %s in time.", command.action, command.command_id)
-                self._late_ids.add(command.command_id)
+                self._late_commands[command.command_id] = command
                 return Result(
                     command_id=command.command_id,
                     status="unknown",
@@ -160,11 +171,11 @@ class PhoneLink:
     async def ask(self, kind: str, text: str, choices: list[str] | None = None, expires_in: int = 600) -> AskOutcome:
         ask_id = new_id("q")
         future = asyncio.get_running_loop().create_future()
-        self._open_ask = (ask_id, future)
+        self._open_ask = (ask_id, future, kind)
         try:
             try:
                 await self.send(
-                    Ask(ask_id=ask_id, kind=kind, text=text, choices=choices, expires_in=expires_in),
+                    Ask(ask_id=ask_id, kind=kind, text=with_choices(text, choices)),
                     check=self._check_can_ask,
                 )
             except PhoneGone:
@@ -182,7 +193,7 @@ class PhoneLink:
                 if remaining <= 0:
                     return await self._cancel_ask(ask_id, "expired")
                 await self._wait_for_change(future, remaining)
-            return _outcome(ask_id, future.result())
+            return _outcome(ask_id, kind, future.result())
         finally:
             self._open_ask = None
 
@@ -203,8 +214,7 @@ class PhoneLink:
                 await asyncio.wait({job})
 
     async def progress(self, state: str, text: str, step: int = 0) -> None:
-        self.last_progress = Progress(state=state, text=text, step=step, revision=self.revision)
-        await self.send(self.last_progress)
+        self.last_progress = Progress(state=state, text=text, step=step)
 
     def request_stop(self) -> None:
         """Stop asked for from outside the task's own connection (the app's HTTP stop button)."""
@@ -213,12 +223,13 @@ class PhoneLink:
         self._notify()
 
     async def finish(self, done: Done) -> None:
-        await self.send(done)
+        if not self.stopped_by_phone:
+            await self.send(done)
         await self.close(1000)
 
     async def fail(self, code: str, message: str, *, task_id: str | None = None) -> None:
         try:
-            await self.send_error(code, message, fatal=True, task_id=task_id)
+            await self.send_error(code, message, task_id=task_id)
         except PhoneGone:
             pass
         await self.close(1000)
@@ -251,8 +262,6 @@ class PhoneLink:
             raise Interrupted("stopped")
         if self.pause_requested:
             raise Interrupted("paused")
-        if command.revision != self.revision:
-            raise Interrupted("updated")
 
     def _check_can_ask(self) -> None:
         reason = self._interruption(include_pause=True)
@@ -273,10 +282,6 @@ class PhoneLink:
         return None
 
     async def _cancel_ask(self, ask_id: str, reason: str) -> AskOutcome:
-        try:
-            await self.send(AskCancel(ask_id=ask_id, reason=reason))
-        except PhoneGone:
-            pass
         return AskOutcome("expired" if reason == "expired" else "cancelled", ask_id, reason=reason)
 
     async def _wait_for_change(self, future: asyncio.Future, timeout: float | None) -> None:
@@ -313,54 +318,51 @@ class PhoneLink:
             self._mark_gone()
 
     async def _dispatch(self, message) -> None:
-        if isinstance(message, Result):
+        if isinstance(message, WireResult):
             self._take_result(message)
         elif isinstance(message, Answer):
             if self._open_ask and self._open_ask[0] == message.ask_id and not self._open_ask[1].done():
                 self._open_ask[1].set_result(message)
             else:
                 log.info("Ignored an answer to %s (no open question with that id).", message.ask_id)
-        elif isinstance(message, Pause):
-            self.pause_requested = True
-            log.info("The user paused.")
-            self._notify()
-        elif isinstance(message, Resume):
-            self.pause_requested = False
-            log.info("The user resumed.")
-            self._notify()
         elif isinstance(message, Stop):
             self.stop_requested = True
+            self.stopped_by_phone = True
             log.info("The user pressed Stop.")
-            self._notify()
-        elif isinstance(message, Update):
-            self._updates.append(message.text)
-            self.revision += 1
-            log.info("The user sent a change (revision %d).", self.revision)
             self._notify()
         else:
             await self.reject("unexpected_message", f"{message.type} is not expected now")
 
-    def _take_result(self, result: Result) -> None:
-        if result.screen:
-            result.screen = clean_screen(result.screen)
-        if self._open_command and self._open_command[0] == result.command_id:
+    def _take_result(self, wire: WireResult) -> None:
+        if self._open_command and self._open_command[0] == wire.id:
+            result = self._convert(wire, self._open_command[2])
             if not self._open_command[1].done():
                 self._open_command[1].set_result(result)
             return
-        if result.command_id in self._late_ids:
-            self._late_ids.discard(result.command_id)
-            log.info("Late result for %s: %s", result.command_id, result.status)
+        late = self._late_commands.pop(wire.id, None)
+        if late:
+            result = self._convert(wire, late)
+            log.info("Late result for %s: %s", wire.id, result.status)
             if self.on_late_result:
                 self.on_late_result(result)
             return
-        log.info("Ignored a result for unknown command %s.", result.command_id)
+        log.info("Ignored a result for unknown command %s.", wire.id)
+
+    def _convert(self, wire: WireResult, command: Command) -> Result:
+        result = result_from_wire(wire, command, self.width, self.height)
+        if result.screen:
+            result.screen = clean_screen(result.screen)
+        return result
 
 
-def _outcome(ask_id: str, answer: Answer) -> AskOutcome:
-    if answer.text is not None and answer.approved is None:
-        return AskOutcome("text", ask_id, text=answer.text)
-    if answer.approved:
+def with_choices(text: str, choices: list[str] | None) -> str:
+    return f"{text} ({' / '.join(choices)})" if choices else text
+
+
+def _outcome(ask_id: str, kind: str, answer: Answer) -> AskOutcome:
+    reply = (answer.text or "").strip()
+    if kind == "confirm" and reply.casefold() in YES_WORDS:
         return AskOutcome("approved", ask_id)
-    if answer.text:
-        return AskOutcome("text", ask_id, text=answer.text)
-    return AskOutcome("declined", ask_id)
+    if kind == "confirm" and reply.casefold() in NO_WORDS | {""}:
+        return AskOutcome("declined", ask_id)
+    return AskOutcome("text", ask_id, text=reply)

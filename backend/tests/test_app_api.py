@@ -3,7 +3,7 @@ import asyncio
 import httpx
 
 from jarvis.brain import Limits, brain_runner
-from jarvis.messages import Progress
+from jarvis.messages import Command
 from tests.fakes.fake_ai import FAKEDASH_SCRIPT, FakeAI, FakeStep
 from tests.fakes.fake_phone import FakePhone, run_fake_phone
 
@@ -38,7 +38,7 @@ async def test_status_shows_the_ai_and_running_tasks(start_server):
     seen = {}
 
     async def look(message):
-        if isinstance(message, Progress) and message.text == "Go home" and "running" not in seen:
+        if isinstance(message, Command) and message.action == "go_home" and "running" not in seen:
             async with httpx.AsyncClient(base_url=server.http_url) as client:
                 seen["running"] = (await client.get("/status")).json()
 
@@ -57,7 +57,7 @@ async def test_stop_button_in_the_app(start_server):
     replies = []
 
     async def press_stop(message):
-        if isinstance(message, Progress) and message.text == "Go home" and not replies:
+        if isinstance(message, Command) and message.action == "go_home" and not replies:
             await asyncio.sleep(0.2)
             async with httpx.AsyncClient(base_url=server.http_url) as client:
                 replies.append(await client.post(f"/tasks/{phone.task_id}/stop"))

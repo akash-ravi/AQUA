@@ -1,5 +1,4 @@
 import json
-import secrets
 import uuid
 from typing import Annotated, Literal, Union
 
@@ -19,7 +18,7 @@ DIRECTIONS = ("down", "up", "left", "right")
 
 Status = Literal["ok", "failed", "rejected", "unknown"]
 Direction = Literal["down", "up", "left", "right"]
-Action = Literal["read_screen", "tap", "type_text", "scroll", "go_back", "go_home", "open_app", "screenshot"]
+Action = Literal["read_screen", "tap", "type_text", "scroll", "go_back", "go_home", "open_app", "screenshot", "list_apps", "tap_at"]
 
 
 class Message(BaseModel):
@@ -77,10 +76,10 @@ class Screen(Message):
 
 # ---- phone -> backend ----
 
-class Device(Message):
-    id: str = Field(min_length=1, max_length=100)
-    name: str | None = None
-    sdk_int: int | None = None
+class DeviceInfo(Message):
+    width: int = Field(gt=0)
+    height: int = Field(gt=0)
+    sdk: int | None = None
 
 
 class App(Message):
@@ -88,36 +87,15 @@ class App(Message):
     package_name: str
 
 
-class Hello(Message):
-    type: Literal["hello"] = "hello"
-    protocol: int
-    device: Device
-    app_version: str | None = None
-    actions: list[str] = []
-    apps: list[App] = []
-
-
-class TaskRequest(Message):
-    type: Literal["task"] = "task"
-    text: str = Field(min_length=1, max_length=MAX_TEXT)
+class Start(Message):
+    type: Literal["start"] = "start"
+    task: str = Field(min_length=1, max_length=MAX_TEXT)
+    device: DeviceInfo
 
 
 class ErrorInfo(Message):
     code: str
     message: str = ""
-
-
-class LastResult(Message):
-    command_id: str
-    status: Status
-    error: ErrorInfo | None = None
-
-
-class Rejoin(Message):
-    type: Literal["rejoin"] = "rejoin"
-    task_id: str
-    rejoin_key: str
-    last_result: LastResult | None = None
 
 
 class Image(Message):
@@ -133,69 +111,53 @@ class Result(Message):
     status: Status
     error: ErrorInfo | None = None
     settled: bool = False
-    settle_ms: int | None = None
-    acted_on: int | None = None
-    method: Literal["action", "gesture"] | None = None
     screen: Screen | None = None
     image: Image | None = None
+    apps: list[App] | None = None
+
+
+class WireResult(Message):
+    type: Literal["result"] = "result"
+    id: str
+    ok: bool
+    data: dict | None = None
+    error: str | None = None
+    message: str | None = None
 
 
 class Answer(Message):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
     type: Literal["answer"] = "answer"
-    ask_id: str
+    ask_id: str = Field(alias="id")
     text: str | None = Field(default=None, max_length=MAX_TEXT)
     approved: bool | None = None
-
-
-class Pause(Message):
-    type: Literal["pause"] = "pause"
-
-
-class Resume(Message):
-    type: Literal["resume"] = "resume"
 
 
 class Stop(Message):
     type: Literal["stop"] = "stop"
 
 
-class Update(Message):
-    type: Literal["update"] = "update"
-    text: str = Field(min_length=1, max_length=MAX_TEXT)
-
-
-PhoneMessage = Annotated[
-    Union[Hello, TaskRequest, Rejoin, Result, Answer, Pause, Resume, Stop, Update],
-    Field(discriminator="type"),
-]
-PHONE_TYPES = {"hello", "task", "rejoin", "result", "answer", "pause", "resume", "stop", "update"}
+PhoneMessage = Annotated[Union[Start, WireResult, Answer, Stop], Field(discriminator="type")]
+PHONE_TYPES = {"start", "result", "answer", "stop"}
 
 
 # ---- backend -> phone ----
-
-class Ready(Message):
-    type: Literal["ready"] = "ready"
-    task_id: str
-    rejoin_key: str
-    revision: int = 0
-    rejoined: bool = False
-
 
 class Command(Message):
     type: Literal["command"] = "command"
     command_id: str
     action: Action
-    revision: int = 0
     timeout_ms: int = 10_000
     screen_id: str | None = None
     target: int | None = None
+    x: int | None = None
+    y: int | None = None
     text: str | None = None
     submit: bool | None = None
     direction: Direction | None = None
     package_name: str | None = None
     confirmed: bool | None = None
-    ask_id: str | None = None
-    must_see: list[str] | None = None
     max_side: int | None = None
 
 
@@ -204,22 +166,12 @@ class Ask(Message):
     ask_id: str
     kind: Literal["question", "confirm"]
     text: str
-    choices: list[str] | None = None
-    expires_in: int
-
-
-class AskCancel(Message):
-    type: Literal["ask_cancel"] = "ask_cancel"
-    ask_id: str
-    reason: Literal["expired", "replaced", "stopped", "paused"]
 
 
 class Progress(Message):
-    type: Literal["progress"] = "progress"
     state: Literal["running", "thinking", "waiting_for_user", "waiting_for_approval", "paused"]
     text: str
     step: int = 0
-    revision: int = 0
 
     @field_validator("text", mode="before")
     @classmethod
@@ -246,18 +198,10 @@ class ErrorMessage(Message):
     type: Literal["error"] = "error"
     code: str
     message: str
-    fatal: bool = False
     task_id: str | None = None
 
 
-BackendMessage = Annotated[
-    Union[Ready, Command, Ask, AskCancel, Progress, Done, ErrorMessage],
-    Field(discriminator="type"),
-]
-BACKEND_TYPES = {"ready", "command", "ask", "ask_cancel", "progress", "done", "error"}
-
 _read_phone_message = TypeAdapter(PhoneMessage)
-_read_backend_message = TypeAdapter(BackendMessage)
 
 
 class BadMessage(Exception):
@@ -289,18 +233,6 @@ def parse_phone_message(raw: str | bytes):
         raise BadMessage("bad_message", _first_problem(error)) from None
 
 
-def parse_backend_message(raw: str | bytes):
-    if isinstance(raw, (bytes, bytearray)):
-        raise BadMessage("bad_message", "binary frames are not allowed")
-    data = _load_object(raw)
-    if data.get("type") not in BACKEND_TYPES:
-        raise BadMessage("unexpected_message", f"unknown message type {data.get('type')!r}")
-    try:
-        return _read_backend_message.validate_python(data)
-    except ValidationError as error:
-        raise BadMessage("bad_message", _first_problem(error)) from None
-
-
 def clean_screen(screen: Screen) -> Screen:
     seen: set[int] = set()
     nodes = []
@@ -322,10 +254,6 @@ def new_id(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:16]}"
 
 
-def new_rejoin_key() -> str:
-    return secrets.token_urlsafe(18)
-
-
 def _load_object(raw: str) -> dict:
     try:
         data = json.loads(raw)
@@ -337,19 +265,20 @@ def _load_object(raw: str) -> dict:
 
 
 def _trim(data: dict) -> None:
-    screen = data.get("screen")
-    if isinstance(screen, dict) and isinstance(screen.get("nodes"), list):
-        nodes = screen["nodes"]
-        if len(nodes) > MAX_NODES:
-            screen["nodes"] = nodes[:MAX_NODES]
-            screen["truncated"] = True
-        for node in screen["nodes"]:
+    payload = data.get("data")
+    if not isinstance(payload, dict):
+        return
+    if isinstance(payload.get("nodes"), list):
+        if len(payload["nodes"]) > MAX_NODES:
+            payload["nodes"] = payload["nodes"][:MAX_NODES]
+            payload["truncated"] = True
+        for node in payload["nodes"]:
             if isinstance(node, dict):
-                for key in ("text", "description", "hint"):
+                for key in ("text", "desc"):
                     if isinstance(node.get(key), str) and len(node[key]) > MAX_NODE_TEXT:
                         node[key] = node[key][:MAX_NODE_TEXT]
-    if isinstance(data.get("apps"), list):
-        data["apps"] = data["apps"][:MAX_APPS]
+    if isinstance(payload.get("apps"), list):
+        payload["apps"] = payload["apps"][:MAX_APPS]
 
 
 def _first_problem(error: ValidationError) -> str:

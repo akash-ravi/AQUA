@@ -2,24 +2,22 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
 
 from jarvis import checks, safety
 from jarvis import screen as screens
 from jarvis.llm.common import AIUnavailable, AuthProblem, BadReply, QuotaUsedUp, RateLimited, SetupProblem
 from jarvis.llm.tools import tools_for
-from jarvis.messages import Command, Done, LastAction, Ready, new_id
+from jarvis.messages import Command, Done, LastAction, new_id
 from jarvis.phone import Interrupted, PhoneGone
 from jarvis.pictures import marked_picture, needs_picture
 from jarvis.prompt import SYSTEM_PROMPT, build_step_message, plain_error, retry_note
-from jarvis.task import Notebook, Step, Task, load_task
+from jarvis.task import Notebook, Step, Task
 
 log = logging.getLogger("jarvis.brain")
 
 TIMEOUTS_MS = {"open_app": 15_000, "screenshot": 8_000, "read_screen": 5_000}
 PHONE_TOOLS = {"tap", "type_text", "scroll", "go_back", "go_home", "open_app"}
 AFTER_COMMIT_TOOLS = {"scroll", "wait", "finish", "give_up", "look"}
-REJOIN_MINUTES = 30
 MAX_PICTURES = 8
 
 
@@ -53,79 +51,12 @@ async def run_task(task: Task, link, ai, notebook: Notebook, limits: Limits | No
 
 
 def brain_runner(ai, limits: Limits | None = None):
-    """Adapts the server's Run record to run_task, for new tasks and for a phone rejoining one."""
-    async def run(server_run, rejoin=None) -> Done | None:
-        data_dir = server_run.settings.data_dir
-        if rejoin is None:
-            task = Task(goal=server_run.goal, device_id=server_run.device_id, id=server_run.task_id,
-                        rejoin_key=server_run.rejoin_key)
-            notebook = Notebook.for_task(data_dir, task.id)
-            notebook.write("task", task_id=task.id, goal=task.goal, device_id=task.device_id,
-                           ai=getattr(ai, "name", ""))
-            return await run_task(task, server_run.link, ai, notebook, limits)
-
-        loaded = load_task(data_dir, rejoin.task_id)
-        problem = rejoin_problem(loaded, server_run.device_id, rejoin)
-        if problem:
-            await server_run.link.fail(*problem, task_id=rejoin.task_id)
-            return None
-        task, events = loaded
-        notebook = Notebook.for_task(data_dir, task.id)
-        settle_open_commands(task, events, rejoin.last_result, notebook)
-        server_run.goal = task.goal
-        server_run.link.revision = task.revision
-        await server_run.link.send(Ready(task_id=task.id, rejoin_key=task.rejoin_key, revision=task.revision,
-                                         rejoined=True))
-        notebook.write("status", to="running", reason="the phone rejoined")
+    async def run(server_run) -> Done | None:
+        task = Task(goal=server_run.goal, device_id=server_run.device_id, id=server_run.task_id)
+        notebook = Notebook.for_task(server_run.settings.data_dir, task.id)
+        notebook.write("task", task_id=task.id, goal=task.goal, device_id=task.device_id, ai=getattr(ai, "name", ""))
         return await run_task(task, server_run.link, ai, notebook, limits)
     return run
-
-
-def rejoin_problem(loaded, device_id: str, rejoin) -> tuple[str, str] | None:
-    if loaded is None:
-        return "task_not_found", "That task is not known here."
-    task, events = loaded
-    if task.device_id != device_id or task.rejoin_key != rejoin.rejoin_key:
-        return "task_not_found", "That task belongs to another phone."
-    done = next((e for e in events if e["event"] == "done"), None)
-    if done:
-        return "task_finished", f"That task already ended: {done.get('summary', '')}"
-    last = datetime.fromisoformat(events[-1]["at"])
-    if datetime.now(timezone.utc) - last > timedelta(minutes=REJOIN_MINUTES):
-        return "task_not_found", f"That task was cut off more than {REJOIN_MINUTES} minutes ago."
-    return None
-
-
-def settle_open_commands(task: Task, events: list[dict], last_result, notebook: Notebook) -> None:
-    """Works out what happened to commands that were sent but never answered before the connection dropped."""
-    answered = {e.get("command_id"): e.get("status") for e in events if e["event"] in ("step_result", "late_result")}
-    for event in events:
-        if event["event"] != "step_sending" or event.get("command_id") in answered:
-            continue
-        if last_result and last_result.command_id == event["command_id"]:
-            status = last_result.status
-        elif last_result:
-            status = "not sent"  # the phone's last command is a different one, so this one never arrived
-        else:
-            status = "unknown"
-        answered[event["command_id"]] = status
-        notebook.write("step_result", n=event.get("n"), command_id=event["command_id"], status=status,
-                       change="settled when the phone rejoined")
-    for event in events:
-        if event["event"] != "step_sending" or not event.get("n"):
-            continue
-        n = event["n"]
-        if n > len(task.steps):
-            continue
-        step = task.steps[n - 1]
-        status = answered.get(event["command_id"], step.status)
-        if step.status in ("", "unknown"):
-            step.status = status
-        if step.irreversible and event.get("confirmed"):
-            if status == "ok" and not any(step.label in line for line in task.done_for_good):
-                task.done_for_good.append(f'approved and tapped "{step.label}"')
-            elif status == "unknown" and not any(step.label in line for line in task.unsure):
-                task.unsure.append(f'tapped "{step.label}" but the result was lost')
 
 
 class Brain:
@@ -289,9 +220,22 @@ class Brain:
                 result = await self.send(command, step)
                 if result is None:
                     return
+        if tool == "tap" and self.click_did_nothing(result, before) and target in before.by_index:
+            await self.tap_at_position(step, before.by_index[target].node)
         if tool == "type_text" and result.status == "ok":
             self.task.typed_texts.append(args.get("text", ""))
         self.after_step(step, before)
+
+    def click_did_nothing(self, result, before) -> bool:
+        if result.status == "failed" and result.error and result.error.code == "action_failed":
+            return True
+        return result.status == "ok" and screens.describe_change(before, self.view, self.settled).startswith("no change")
+
+    async def tap_at_position(self, step: Step, node) -> None:
+        left, top, right, bottom = node.bounds
+        command = self.command("tap_at", {})
+        command.x, command.y = (left + right) // 2, (top + bottom) // 2
+        await self.send(command, step)
 
     async def tap_then_type(self, step: Step, args: dict) -> bool:
         result = await self.send(self.command("tap", args), step)
@@ -407,7 +351,7 @@ class Brain:
             self.warnings.append(target)
             return
         command = self.command("tap", {"target": target})
-        command.confirmed, command.ask_id, command.must_see = True, outcome.ask_id, plan.must_see or None
+        command.confirmed = True
         result = await self.send(command, step, confirmed=True)
         if result is None:
             return
@@ -438,7 +382,7 @@ class Brain:
 
     def command(self, action: str, args: dict) -> Command:
         return Command(
-            command_id=new_id("c"), action=action, revision=self.link.revision,
+            command_id=new_id("c"), action=action,
             timeout_ms=TIMEOUTS_MS.get(action, 10_000),
             screen_id=self.screen.screen_id if action in ("tap", "type_text", "scroll") and self.screen else None,
             target=args.get("target") if action in ("tap", "type_text", "scroll") else None,

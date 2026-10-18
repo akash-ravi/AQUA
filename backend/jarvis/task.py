@@ -5,7 +5,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from jarvis.messages import new_id, new_rejoin_key
+from jarvis.messages import new_id
 
 MAX_NOTES = 12
 MAX_NOTE_CHARS = 150
@@ -35,7 +35,6 @@ class Task:
     goal: str
     device_id: str
     id: str = field(default_factory=lambda: new_id("t"))
-    rejoin_key: str = field(default_factory=new_rejoin_key)
     revision: int = 0
     corrections: list[str] = field(default_factory=list)
     answers: list[tuple[str, str]] = field(default_factory=list)
