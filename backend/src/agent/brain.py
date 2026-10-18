@@ -288,6 +288,11 @@ class Brain:
         if result is None:
             return
         unchanged = result.status == "ok" and screens.describe_change(before, self.view).startswith("no change")
+        if unchanged and command.action == "tap" and not step.duplicate_sensitive and not command.confirmed:
+            result = await self.touch_if_click_ignored(before, args["target"], step, result)
+            if result is None:
+                return
+            unchanged = result.status == "ok" and screens.describe_change(before, self.view).startswith("no change")
         if result.status in {"failed", "unknown"} or unchanged:
             await self.observe_result(before)
         if tool == "type_text" and result.status == "ok":
@@ -337,10 +342,24 @@ class Brain:
         previous = self.attempts.get(safety.action_key(tool, args, self.view))
         if tool == "tap" and previous and previous.count and previous.status in {"ok", "failed", "unknown"}:
             # A coordinate fallback is a second execution, after observation and any duplicate check.
-            node = self.view.by_index[args["target"]].node
-            left, top, right, bottom = node.bounds
-            return new_command("tap_at", x=(left + right) // 2, y=(top + bottom) // 2)
+            return self.tap_at_center(self.view, args["target"])
         return self.command(tool, args)
+
+    def tap_at_center(self, view, target: int) -> Command:
+        left, top, right, bottom = view.by_index[target].node.bounds
+        return new_command("tap_at", x=(left + right) // 2, y=(top + bottom) // 2)
+
+    async def touch_if_click_ignored(self, before, target: int, step: Step, result):
+        # Some apps (Amazon results) acknowledge an accessibility click and ignore it; a real touch works.
+        if self.task.wait_seconds + 1 > MAX_WAIT_SECONDS:
+            return result
+        self.task.wait_seconds += 1
+        if not await self.sleep_interruptibly(1):
+            return result
+        await self.read_screen()
+        if before.signature != self.view.signature:
+            return result
+        return await self.send(self.tap_at_center(before, target), step)
 
     def note_attempt(self, step: Step, before) -> None:
         previous = self.attempts.get(step.action_key, Attempt())
@@ -907,7 +926,8 @@ class Brain:
         if len(self.screen_history) >= 6 and len(set(self.screen_history[-6:])) <= 2:
             apps = " and ".join(dict.fromkeys(self.task.screens_seen[-2:])) or "the same screens"
             self.warnings.append(f"You are going back and forth in {apps}. Try a different way.")
-            self.screenshot_requested = True
+            if after.signature not in self.screenshotted_screens:
+                self.screenshot_requested = True
         log.info("step %d: %s %s → %s", step.n, step.tool, step.label, step.change)
 
     def find_text_field(self) -> int | None:
