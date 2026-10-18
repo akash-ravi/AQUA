@@ -8,9 +8,13 @@ object ConfirmationGuard {
     private val free = Regex("\\b(free|no charge|no cost|zero cost)\\b", RegexOption.IGNORE_CASE)
     private val money = Regex("(?:[$€£₹]|\\b(?:USD|EUR|GBP|INR|CAD|AUD)\\s*)\\s*\\d", RegexOption.IGNORE_CASE)
     private val branding = Regex("\\bbuy \\d+\\b.*\\bget\\b|\\b(google|apple|samsung) pay\\b|\\bpay with\\b|\\bpaypal\\b", RegexOption.IGNORE_CASE)
+    private val browsing = Regex("\\b(learn more|compare|tech specs|view pricing|see pricing|(?:choose|select) (?:your |a )?(?:model|color|colour|size|storage|finish))\\b", RegexOption.IGNORE_CASE)
+    private val checkout = Regex("\\b(checkout|check out|total|amount due|order summary|payment method|billing|shipping address|delivery address|place order|pay now|confirm purchase|confirm payment|confirm order|one.click|1.click)\\b", RegexOption.IGNORE_CASE)
 
     fun needsConfirmation(label: String, context: String = label): Boolean {
         val action = branding.replace(label, " ")
+        if (label.trim().equals("Buy", ignoreCase = true) && browsing.containsMatchIn(context)
+            && !checkout.containsMatchIn(context)) return false
         val amounts = Regex("(?:[$€£₹]|\\b(?:USD|EUR|GBP|INR|CAD|AUD)\\s*)\\s*([0-9,]+)(?:\\.(\\d{2}))?", RegexOption.IGNORE_CASE).findAll(context).toList()
         if (amounts.isNotEmpty() && amounts.all { it.groupValues[1].replace(",", "").toLongOrNull() == 0L && it.groupValues[2].ifEmpty { "0" }.toInt() == 0 }
             && Regex("\\b(total|amount due|amount to send|you pay)\\b", RegexOption.IGNORE_CASE).containsMatchIn(context)

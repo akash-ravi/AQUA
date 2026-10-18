@@ -10,6 +10,10 @@ POSSIBLY_PAID = re.compile(r"\b(subscribe|start trial|start free trial|book|rese
 COMMERCE = re.compile(r"\b(payment|checkout|check out|beneficiary|bank transfer|subscription|billing|fare|charge|fee|per minute|premium sms|paid)\b", re.IGNORECASE)
 FREE = re.compile(r"\b(free|no charge|no cost|zero cost)\b", re.IGNORECASE)
 NOT_PAYMENT = re.compile(r"\bbuy \d+\b.*\bget\b|\b(google|apple|samsung) pay\b|\bpay with\b|\bpaypal\b", re.IGNORECASE)
+BROWSING_CONTEXT = re.compile(r"\b(learn more|compare|tech specs|view pricing|see pricing|"
+                              r"(?:choose|select) (?:your |a )?(?:model|color|colour|size|storage|finish))\b", re.IGNORECASE)
+CHECKOUT_CONTEXT = re.compile(r"\b(checkout|check out|total|amount due|order summary|payment method|billing|shipping address|delivery address|"
+                              r"place order|pay now|confirm purchase|confirm payment|confirm order|one.click|1.click)\b", re.IGNORECASE)
 DUPLICATE_EFFECT = re.compile(r"\b(send|delete|call|dial|post|publish|submit|book|reserve|subscribe|transfer|donate|place order|pay|buy|purchase|request ride)\b", re.IGNORECASE)
 MONEY = re.compile(r"((?:US)?\$|€|£|₹|\b(?:USD|EUR|GBP|INR|CAD|AUD)\s*)\s*(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{2}))?", re.IGNORECASE)
 # Picking options (color, size, "Select", cookie "Accept") stays allowed; PAYMENT_ACTION still blocks the final pay/order tap.
@@ -38,10 +42,20 @@ def target_text(view, index: int) -> str:
     return line.label + " " + screens.subtree_text(view.screen, screens.effective_target(view.screen, index).index)
 
 
+def is_purchase_navigation(label: str, context: str) -> bool:
+    # A bare Buy link on a product/options page opens the buying flow. Buy now and
+    # checkout controls remain gated; a price alone doesn't prove navigation.
+    return (label.strip().casefold() == "buy" and bool(BROWSING_CONTEXT.search(context))
+            and not CHECKOUT_CONTEXT.search(context))
+
+
 def payment_requirement(view, index: int) -> str | None:
     """payment, unknown cost, or no payment approval. Never equate Send with spending."""
     text = NOT_PAYMENT.sub(" ", target_text(view, index))
     context = " ".join(line.label for line in view.lines)
+    line = view.by_index.get(index)
+    if line and is_purchase_navigation(line.label, context):
+        return None
     charges = MONEY.findall(context)
     if (charges and all(int(whole.replace(',', '')) == 0 and int(cents or '0') == 0 for _, whole, cents in charges)
             and screen_total(view) is not None and not re.search(r"renew|recurring|trial|per month|per year", context, re.I)):
@@ -66,6 +80,9 @@ def payment_requirement(view, index: int) -> str | None:
 
 
 def duplicate_sensitive(tool: str, args: dict, view) -> bool:
+    line = view.by_index.get(args.get("target"))
+    if line and is_purchase_navigation(line.label, " ".join(item.label for item in view.lines)):
+        return False
     return tool in {"tap", "confirm_and_tap"} and bool(DUPLICATE_EFFECT.search(target_text(view, args["target"])))
 
 
@@ -133,8 +150,8 @@ def check_action(tool: str, args: dict, view) -> str | None:
         if args.get("submit") and not looks_like_search(view, target):
             return "Type without submit, then tap the visible Send button. Use confirm_and_tap only if sending costs money."
     # Picture taps skip the screen-text money checks, so anything with an effect is left to the user.
-    if tool == "tap_point" and (BLIND_EFFECT.search(args["what"]) or PAYMENT_ACTION.search(args["what"])
-                                or SLIDE_GESTURE.search(args["what"]) or find_amounts(args["what"])):
+    if tool == "tap_point" and not is_purchase_navigation(args["what"], " ".join(line.label for line in view.lines)) and (
+            BLIND_EFFECT.search(args["what"]) or PAYMENT_ACTION.search(args["what"]) or SLIDE_GESTURE.search(args["what"])):
         return "That may cost money or can't be undone, and it has no number. Ask the user to tap it themselves with ask_user."
     if tool == "type_focused" and is_secret(args["text"]):
         return "Don't type a secret. Ask the user to enter it on the phone."
