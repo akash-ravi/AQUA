@@ -4,29 +4,29 @@
 
 <br/>
 
-<a href="#-the-problem"><img src="https://img.shields.io/badge/Android-11%2B-FF6B35?style=for-the-badge&logo=android&logoColor=white" alt="Android 11+"/></a>
-<a href="#-how-it-works"><img src="https://img.shields.io/badge/Claude-Opus%205.5-FF3B4E?style=for-the-badge&logo=anthropic&logoColor=white" alt="Claude Opus 5.5"/></a>
+<a href="#the-problem"><img src="https://img.shields.io/badge/Android-11%2B-FF6B35?style=for-the-badge&logo=android&logoColor=white" alt="Android 11+"/></a>
+<a href="#how-it-works"><img src="https://img.shields.io/badge/Claude-Opus%205.5-FF3B4E?style=for-the-badge&logo=anthropic&logoColor=white" alt="Claude Opus 5.5"/></a>
 <a href="android-client"><img src="https://img.shields.io/badge/Kotlin-Compose-FFB77A?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin"/></a>
 <a href="backend"><img src="https://img.shields.io/badge/Python-3.12-211714?style=for-the-badge&logo=python&logoColor=FFB77A" alt="Python 3.12"/></a>
-<a href="#-voice-that-feels-like-a-conversation"><img src="https://img.shields.io/badge/Speech-on--device-30211D?style=for-the-badge&logo=onnx&logoColor=FFB77A" alt="On-device speech"/></a>
+<a href="#voice-that-feels-like-a-conversation"><img src="https://img.shields.io/badge/Speech-on--device-30211D?style=for-the-badge&logo=onnx&logoColor=FFB77A" alt="On-device speech"/></a>
 
 <h3>An AI agent that uses your phone the way you do: it reads the screen, taps, types and scrolls,<br/>across any app, until the job is done and it can prove it.</h3>
 
 <p><i>Built so that everyone can use a smartphone, including people who can't see it, can't easily touch it,<br/>or can't keep up with it.</i></p>
 
-<a href="#-the-problem"><b>The problem</b></a> ·
-<a href="#-built-for-the-people-phones-leave-behind"><b>Who it's for</b></a> ·
-<a href="#-watch-it-work"><b>Demo</b></a> ·
-<a href="#-how-it-works"><b>How it works</b></a> ·
-<a href="#-built-to-be-trusted"><b>Safety</b></a> ·
-<a href="#-architecture"><b>Architecture</b></a> ·
-<a href="#-run-it-yourself"><b>Run it</b></a>
+<a href="#the-problem"><b>The problem</b></a> ·
+<a href="#built-for-the-people-phones-leave-behind"><b>Who it's for</b></a> ·
+<a href="#watch-it-work"><b>Demo</b></a> ·
+<a href="#how-it-works"><b>How it works</b></a> ·
+<a href="#built-to-be-trusted"><b>Safety</b></a> ·
+<a href="#architecture"><b>Architecture</b></a> ·
+<a href="#run-it-yourself"><b>Run it</b></a>
 
 </div>
 
 <br/>
 
-## 🔥 The problem
+## The problem
 
 **Your phone can do almost anything, but you have to tap through every step yourself.**
 
@@ -49,7 +49,7 @@ an integration for them. Ask one to order from the restaurant app you actually u
 
 <br/>
 
-## 💛 Built for the people phones leave behind
+## Built for the people phones leave behind
 
 Smartphones are how we bank, see a doctor, order groceries, call a ride and stay in touch with family. But they're
 designed for people who can **see** a small screen, **tap** precisely, and **keep up** with constant redesigns.
@@ -76,7 +76,7 @@ Hundreds of millions of people can't do all three, and every year more of daily 
 <tr>
 <td width="33%" valign="top">
 
-### 🦯 Blind & low vision
+### Blind & low vision
 **Today:** screen readers read the screen one item at a time. A single checkout can take dozens of swipes, and
 an unlabeled button is a dead end.
 
@@ -86,7 +86,7 @@ Jarvis **looks at the screenshot** to work out what it is.
 </td>
 <td width="33%" valign="top">
 
-### 👵 Older adults
+### Older adults
 **Today:** tiny text, buttons that move with every update, fear of tapping the wrong thing, and scams that
 target them.
 
@@ -96,7 +96,7 @@ before it acts. Instructions hidden in messages and ads are ignored.
 </td>
 <td width="33%" valign="top">
 
-### ✋ Motor disabilities
+### Motor disabilities
 **Today:** Parkinson's tremors, ALS, arthritis, spinal cord injury or limb loss can make precise taps, swipes and
 typing slow, painful or impossible.
 
@@ -108,7 +108,7 @@ does the dozens of precise touches that follow.
 <tr>
 <td width="33%" valign="top">
 
-### 🧠 Cognitive & learning differences
+### Cognitive & learning differences
 **Today:** deep menus, screens full of text, and remembering where every setting lives, in every app.
 
 **With Jarvis:** one sentence. If it needs something, it asks **one short question with a few choices**,
@@ -117,7 +117,7 @@ never a wall of options.
 </td>
 <td width="33%" valign="top">
 
-### 🩹 Temporary & situational
+### Temporary & situational
 **Today:** a broken wrist, recovering from surgery, holding a baby, cooking, driving. Anyone can lose the use of
 their hands or eyes for a while.
 
@@ -126,7 +126,7 @@ their hands or eyes for a while.
 </td>
 <td width="33%" valign="top">
 
-### 🤝 Families & caregivers
+### Families & caregivers
 **Today:** the endless "can you do this on my phone for me?" calls, and loved ones who lose independence
 because one app is too hard.
 
@@ -150,24 +150,24 @@ because one app is too hard.
 
 <br/>
 
-## ✨ What Jarvis does
+## What Jarvis does
 
 You say what you want. Jarvis works out the steps and drives the phone itself. You can watch an animated orb
 and a glow around the screen edge, read a short status line, and hear it when it needs you.
 
 | | |
 |---|---|
-| 🗣️ **Talk to it** | Hold the assistant gesture or tap the orb and speak. Speech recognition runs **on the phone**, offline. |
-| 🧠 **It plans** | Turns "order a large pepperoni from DoorDash" into search → pick → size → cart → checkout. |
-| 👆 **It acts** | Taps, types, scrolls, goes back and opens apps, on the real UI, in **any app**. |
-| 🔍 **It checks itself** | After every action it asks *what changed?* If nothing did, it tries something else. |
-| ✋ **It asks you** | Missing a detail like which size or which address? It asks one short question, out loud. |
-| 🛑 **It waits for your Yes** | It won't place an order, pay, send, post or delete until you approve the exact summary. |
-| ✅ **It proves it** | It only says "done" when it can quote the confirmation off the screen. |
+| **Talk to it** | Hold the assistant gesture or tap the orb and speak. Speech recognition runs **on the phone**, offline. |
+| **It plans** | Turns "order a large pepperoni from DoorDash" into search → pick → size → cart → checkout. |
+| **It acts** | Taps, types, scrolls, goes back and opens apps, on the real UI, in **any app**. |
+| **It checks itself** | After every action it asks *what changed?* If nothing did, it tries something else. |
+| **It asks you** | Missing a detail like which size or which address? It asks one short question, out loud. |
+| **It waits for your Yes** | It won't place an order, pay, send, post or delete until you approve the exact summary. |
+| **It proves it** | It only says "done" when it can quote the confirmation off the screen. |
 
 <br/>
 
-## 🎬 Watch it work
+## Watch it work
 
 <div align="center">
 <img src="docs/readme/run.svg" alt="A sample run: open DoorDash, search, pick Large, add to cart, ask before ordering, finish with proof." width="100%"/>
@@ -180,7 +180,7 @@ and a glow around the screen edge, read a short status line, and hear it when it
 
 <br/>
 
-## ⚙️ How it works
+## How it works
 
 Jarvis is a **tight loop**, not a script. Each turn it looks at the screen as it is *right now*, picks exactly
 one action, checks it against hard rules, runs it, and measures what changed. It keeps going until the screen
@@ -209,7 +209,7 @@ numbered boxes on it**, so the picture and the outline use the same numbers.
 
 <br/>
 
-## 🛡️ Built to be trusted
+## Built to be trusted
 
 An agent that can tap anything on your phone has to be safe by design. Jarvis's guardrails live **in code**,
 outside the model.
@@ -219,20 +219,20 @@ outside the model.
 </div>
 
 <table>
-<tr><td>🧾 <b>Approval with receipts</b></td><td>Irreversible buttons (order, pay, send, post, delete, book…) are caught by code, not left to the model's judgment. The approval prompt has to name the items and the <b>exact total shown on screen</b>.</td></tr>
-<tr><td>👂 <b>Double-checked "yes"</b></td><td>Spoken replies can be misheard, so a second, separate check (the Jev classifier when configured, otherwise Claude) has to agree that your reply clearly approves <i>exactly this</i> action, with no changes or conditions.</td></tr>
-<tr><td>🧱 <b>Prompt-injection resistant</b></td><td>Screen text is treated as <b>data, never instructions</b>. A sneaky "ignore your task and…" in a message or an ad is just text on a screen.</td></tr>
-<tr><td>🔑 <b>Secrets stay yours</b></td><td>Jarvis refuses to type passwords, codes or card numbers. You type them, and it waits. Secret fields are redacted from logs.</td></tr>
-<tr><td>📸 <b>Proof or it didn't happen</b></td><td><code>finish</code> is rejected unless its proof phrases appear <b>word for word</b> on the current screen and aren't just an echo of what it typed.</td></tr>
-<tr><td>🎯 <b>Screens out noise</b></td><td>Speech that clearly isn't a phone task, like a stray fragment or small talk, is caught before Jarvis touches anything.</td></tr>
-<tr><td>⏱️ <b>Hard budgets</b></td><td>50 steps, 80 model calls, 15 minutes per task. When it's stuck, it stops and asks you instead of thrashing.</td></tr>
-<tr><td>⏸️ <b>You're in charge</b></td><td>Pause, Stop or change the task mid-run. Corrections are added to the plan ("newest wins").</td></tr>
-<tr><td>📓 <b>Full audit trail</b></td><td>Every event is written to a per-task JSONL notebook and <code>fsync</code>ed <b>before</b> each command is sent, so even a crash leaves a complete record.</td></tr>
+<tr><td><b>Approval with receipts</b></td><td>Irreversible buttons (order, pay, send, post, delete, book…) are caught by code, not left to the model's judgment. The approval prompt has to name the items and the <b>exact total shown on screen</b>.</td></tr>
+<tr><td><b>Double-checked "yes"</b></td><td>Spoken replies can be misheard, so a second, separate check (the Jev classifier when configured, otherwise Claude) has to agree that your reply clearly approves <i>exactly this</i> action, with no changes or conditions.</td></tr>
+<tr><td><b>Prompt-injection resistant</b></td><td>Screen text is treated as <b>data, never instructions</b>. A sneaky "ignore your task and…" in a message or an ad is just text on a screen.</td></tr>
+<tr><td><b>Secrets stay yours</b></td><td>Jarvis refuses to type passwords, codes or card numbers. You type them, and it waits. Secret fields are redacted from logs.</td></tr>
+<tr><td><b>Proof or it didn't happen</b></td><td><code>finish</code> is rejected unless its proof phrases appear <b>word for word</b> on the current screen and aren't just an echo of what it typed.</td></tr>
+<tr><td><b>Screens out noise</b></td><td>Speech that clearly isn't a phone task, like a stray fragment or small talk, is caught before Jarvis touches anything.</td></tr>
+<tr><td><b>Hard budgets</b></td><td>50 steps, 80 model calls, 15 minutes per task. When it's stuck, it stops and asks you instead of thrashing.</td></tr>
+<tr><td><b>You're in charge</b></td><td>Pause, Stop or change the task mid-run. Corrections are added to the plan ("newest wins").</td></tr>
+<tr><td><b>Full audit trail</b></td><td>Every event is written to a per-task JSONL notebook and <code>fsync</code>ed <b>before</b> each command is sent, so even a crash leaves a complete record.</td></tr>
 </table>
 
 <br/>
 
-## 🎙️ Voice that feels like a conversation
+## Voice that feels like a conversation
 
 - **On-device speech recognition:** [Moonshine](https://github.com/usefulsensors/moonshine) ASR with Silero VAD,
   running locally through [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). The models are pinned and
@@ -245,7 +245,7 @@ outside the model.
 
 <br/>
 
-## 🏗️ Architecture
+## Architecture
 
 <div align="center">
 <img src="docs/readme/architecture.svg" alt="Architecture: Android app, Jarvis backend, Claude." width="100%"/>
@@ -259,9 +259,9 @@ outside the model.
 sequenceDiagram
     autonumber
     actor U as You
-    participant P as 📱 Phone
-    participant J as 🧠 Jarvis
-    participant C as ☁️ Claude
+    participant P as Phone
+    participant J as Jarvis
+    participant C as Claude
 
     U->>P: "Order a large pepperoni from DoorDash"
     P->>J: hello · task
@@ -284,28 +284,28 @@ sequenceDiagram
     C-->>J: APPROVE
     J->>P: command tap [24]
     C-->>J: finish, proof: "Order confirmed"
-    J->>J: proof is on screen ✓
-    J->>P: done ✅
+    J->>J: proof is on screen
+    J->>P: done
 ```
 
 </details>
 
 <br/>
 
-## 🧩 Why this is different
+## Why this is different
 
 | | Voice assistants | Automation apps | **Jarvis** |
 |---|:---:|:---:|:---:|
-| Works in apps that never integrated | ❌ | ⚠️ hand-built per app | ✅ |
-| Understands a goal, not a command | ⚠️ | ❌ | ✅ |
-| Multi-step, across screens | ⚠️ | ⚠️ scripted | ✅ adapts live |
-| Recovers from popups and layout changes | ❌ | ❌ breaks | ✅ |
-| Asks before spending money | ⚠️ | ❌ | ✅ itemized |
-| Proves the task actually happened | ❌ | ❌ | ✅ |
+| Works in apps that never integrated | No | Partly, hand-built per app | Yes |
+| Understands a goal, not a command | Partly | No | Yes |
+| Multi-step, across screens | Partly | Partly, scripted | Yes, adapts live |
+| Recovers from popups and layout changes | No | No, breaks | Yes |
+| Asks before spending money | Partly | No | Yes, itemized |
+| Proves the task actually happened | No | No | Yes |
 
 <br/>
 
-## 🔬 Engineering highlights
+## Engineering highlights
 
 - **Strict tool use, one action per call.** Every model reply is a schema-validated tool call. Invalid replies get
   a targeted retry note instead of crashing the task.
@@ -320,7 +320,7 @@ sequenceDiagram
 
 <br/>
 
-## 🚀 Run it yourself
+## Run it yourself
 
 <details open>
 <summary><b>1 · Start the brain (Mac / Linux)</b></summary>
@@ -363,11 +363,11 @@ To use the dashboard: `pip install -e '.[dashboard]' && streamlit run dashboard.
 
 <br/>
 
-## 🗂️ Project structure
+## Project structure
 
 ```text
 JARVIS/
-├── backend/                 🧠 the brain (Python · FastAPI · Anthropic SDK)
+├── backend/                 the brain (Python · FastAPI · Anthropic SDK)
 │   └── src/
 │       ├── server/          WebSocket endpoint, one task per connection
 │       ├── phone/           protocol models and the phone link (commands, asks, stop)
@@ -379,7 +379,7 @@ JARVIS/
 │       │   ├── checks.py    action validity and proof verification
 │       │   └── task.py      task memory and the fsynced JSONL notebook
 │       └── ai/              model calls, strict tool schemas, error handling
-├── android-client/          📱 the hands, eyes and voice (Kotlin)
+├── android-client/          the hands, eyes and voice (Kotlin)
 │   └── app/src/main/java/com/example/jarvis/
 │       ├── device/          screen reader, gestures, command executor, confirmation guard
 │       ├── voice/           on-device ASR, duplex turn-taking, system TTS
@@ -391,7 +391,7 @@ JARVIS/
 
 <br/>
 
-## 🛣️ What's next
+## What's next
 
 - **Memory and routines:** remember your usual order, your addresses and your people, with you in control of what's kept.
 - **Running more on the phone:** quick decisions on-device, with heavier reasoning in the cloud only when needed.
@@ -404,14 +404,10 @@ JARVIS/
 
 <div align="center">
 
-## 👥 Team
+## Team
 
 **[Sparsh Gupta](https://github.com/Sparshg3011)** · **Saatwik Yajaman** · **[Akash Ravi](https://github.com/akash-ravi)**
 
 <sub>Built at USC.</sub>
-
-<br/>
-
-<img src="https://img.shields.io/badge/Made_with-🧡_and_too_much_coffee-FF6B35?style=flat-square" alt="Made with love"/>
 
 </div>
