@@ -10,6 +10,7 @@ ERROR_CODES = {
     "staleScreen": "stale_screen", "nodeNotFound": "stale_target", "actionFailed": "action_failed",
     "appNotFound": "app_not_found", "needsConfirmation": "needs_confirmation", "secureWindow": "secure_window",
     "stepLimit": "step_limit", "badCommand": "bad_command",
+    "cantSubmit": "cant_submit",
 }
 NOTHING_HAPPENED = {"stale_screen", "stale_target", "app_not_found", "needs_confirmation", "step_limit", "bad_command"}
 
@@ -53,6 +54,10 @@ def result_from_wire(data, command: Command, width: int, height: int) -> Result:
         if command.action == "list_apps":
             apps = [App(label=app["label"], package_name=app["package"]) for app in payload["apps"]]
             return Result(command_id=data.id, status="ok", settled=True, apps=apps)
+        if command.action == "type_text" and command.submit:
+            submitted = payload.get("submitted")
+            return Result(command_id=data.id, status="ok", settled=True,
+                          submitted=submitted if type(submitted) is bool else None)
     except (KeyError, TypeError, ValidationError):
         return failed_result(command, "bad_result", "the phone sent a result in the wrong shape")
     return Result(command_id=data.id, status="ok", settled=True)

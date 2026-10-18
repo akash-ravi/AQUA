@@ -114,6 +114,7 @@ class Result(Message):
     screen: Screen | None = None
     image: Image | None = None
     apps: list[App] | None = None
+    submitted: bool | None = None
 
 
 class WireResult(Message):

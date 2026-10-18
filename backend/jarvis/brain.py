@@ -407,6 +407,18 @@ class Brain:
                 step.status = "not sent"
             return None
         error = result.error.code if result.error else ""
+        if command.action == "type_text" and command.submit and error == "cant_submit":
+            self.warnings.append(
+                "The text was entered but the search was not submitted. Do not retype it. "
+                "Use a visible Search/Go button or a suggestion matching the query on the fresh screen; "
+                "if none is available, ask the user to press Search on the keyboard."
+            )
+        elif command.action == "type_text" and command.submit and result.status == "ok" and result.submitted is not True:
+            self.warnings.append(
+                "The phone acknowledged typing but did not confirm search submission (older phone builds may ignore submit). "
+                "Check the fresh screen for actual results. If it still shows suggestions, tap a visible Search/Go "
+                "button or a matching suggestion instead of retyping; ask the user to press Search if none is available."
+            )
         self.notebook.write("step_result", n=n, command_id=command.command_id, status=result.status, error=error,
                             settled=result.settled)
         if step:

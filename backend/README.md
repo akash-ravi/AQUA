@@ -86,6 +86,7 @@ testing, switch to Groq or Ollama for it, or use Claude. Screens and screenshots
 
 ## Troubleshooting
 
+- Search text appears but results never load: the Android `setText` handler must honor `submit=true` by invoking the field's IME action. Older builds silently ignore it. The backend now checks submission acknowledgements and tells the AI to use a visible Search/Go button or matching suggestion; if none is exposed, it asks you to press Search. The Android change is in [`patches/android-search-submit.patch`](patches/android-search-submit.patch): apply it from the root of the Android checkout with `git apply /path/to/JARVIS/backend/patches/android-search-submit.patch`, rebuild, and install the updated app. A successful submit returns `data: {"submitted": true}`; failure after typing returns `cantSubmit`, so the AI does not retype the query.
 - Phone can't connect: same Wi-Fi? health link works in the phone browser? Mac firewall allows port 8000? Try USB.
 - "daily limit" / "too many requests": the free AI quota ran out or is busy. Wait, or switch AI in `.env`.
 - Server says a paid model is blocked: set `ALLOW_PAID_MODELS=true` if you really want to pay for it.

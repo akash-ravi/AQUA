@@ -13,7 +13,7 @@ from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
 
 from tests.fakes.fakedash import APPS, DOORDASH, Built, Entry, FakeDash
-from jarvis.messages import ACTIONS, Answer, Ask, Command, Done, ErrorInfo, Image, Node, Result, Screen
+from jarvis.messages import ACTIONS, App, Answer, Ask, Command, Done, ErrorInfo, Image, Node, Result, Screen
 from jarvis.wire import COMMAND_NAMES
 
 MAX_FRAME = 16 * 1024 * 1024
@@ -181,9 +181,11 @@ class FakePhone:
         if not el.enabled:
             return self._reply(command, "rejected", "disabled", "that text box is disabled")
         el.typed(command.text or "")
-        if el.submit is not None:  # the wire has no Enter key, so the fake search box searches as you type
+        if command.submit:
+            if el.submit is None:
+                return self._reply(command, "failed", "cant_submit", "text entered, but Enter isn't available here")
             el.submit()
-        return self._reply(command, "ok")
+        return self._reply(command, "ok", submitted=True if command.submit else None)
 
     def _scroll(self, command: Command) -> Result:
         if command.target is not None:
@@ -365,7 +367,7 @@ def _command_from_wire(message: dict) -> Command:
     action = next(action for action, name in COMMAND_NAMES.items() if name == message["name"])
     args = message["args"]
     return Command(command_id=message["id"], action=action, screen_id=args.get("screenId"), target=args.get("index"),
-                   text=args.get("text"), direction=args.get("direction"), package_name=args.get("name"),
+                   text=args.get("text"), submit=args.get("submit"), direction=args.get("direction"), package_name=args.get("name"),
                    confirmed=args.get("confirmed"), max_side=args.get("maxWidth"))
 
 
@@ -390,6 +392,8 @@ def _result_to_wire(result: Result, command: Command, phone: FakePhone) -> dict:
         data = {"png": result.image.data, "width": result.image.width, "height": result.image.height}
     elif command.action == "list_apps":
         data = {"apps": [{"label": label, "package": package} for package, label in APPS.items()]}
+    elif command.action == "type_text" and result.submitted is not None:
+        data = {"submitted": result.submitted}
     return {"type": "result", "id": result.command_id, "ok": True, "data": data}
 
 
@@ -401,6 +405,7 @@ def _node_to_wire(node: Node) -> dict:
 
 
 WIRE_ERRORS = {
+    "cant_submit": "cantSubmit",
     "stale_screen": "staleScreen", "stale_target": "nodeNotFound", "bad_target": "nodeNotFound",
     "app_not_found": "appNotFound", "screenshot_blocked": "secureWindow", "stopped": "actionFailed",
 }
