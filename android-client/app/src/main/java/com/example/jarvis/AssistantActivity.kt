@@ -27,7 +27,11 @@ class AssistantActivity : Activity() {
                 openOverlayAfterClose = true
                 finish()
             }
-            waitedMs >= SERVICE_WAIT_MS -> openSetup()
+            waitedMs >= SERVICE_WAIT_MS -> {
+                // Accessibility is on but still binding; the service opens the popup when it connects.
+                PhoneUseService.showOverlayWhenConnected = true
+                finish()
+            }
             else -> {
                 waitedMs += POLL_MS
                 handler.postDelayed(::waitForService, POLL_MS)

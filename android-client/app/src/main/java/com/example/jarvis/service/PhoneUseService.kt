@@ -98,6 +98,10 @@ class PhoneUseService : AccessibilityService() {
                 })
             }
         }
+        if (showOverlayWhenConnected) {
+            showOverlayWhenConnected = false
+            showOverlay()
+        }
     }
 
     override fun onDestroy() {
@@ -329,6 +333,7 @@ class PhoneUseService : AccessibilityService() {
     companion object {
         var instance: PhoneUseService? = null
             private set
+        var showOverlayWhenConnected = false
 
         private const val FOLLOW_UP_WINDOW_MS = 4_000L
     }
