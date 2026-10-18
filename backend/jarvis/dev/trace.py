@@ -3,7 +3,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from jarvis.config import load_settings
+from jarvis.config import Settings
 from jarvis.task import Notebook
 
 
@@ -57,7 +57,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Show what happened in a task.")
     parser.add_argument("task", nargs="?", default="last", help="task id, or 'last'")
     args = parser.parse_args()
-    path = find_notebook(load_settings().data_dir, args.task)
+    path = find_notebook(Settings().data_dir, args.task)
     if path is None:
         sys.exit("No task notebook found.")
     print(f"{path.name}\n")

@@ -422,8 +422,8 @@ the backend sends, word for word, and passes the user's taps back.
 | `ask`, `kind: "question"` | A question card: the text, one button per choice, and a text box. Keep it answerable while DoorDash is in front. Optional countdown from `expires_in` | Tap a choice or type, then send `answer` with `text` |
 | `ask`, `kind: "confirm"` | A clear confirm dialog with the text **exactly as sent** (several lines: summary, button name, total) and two big buttons, Yes and No. Vibrate. Never answer it automatically | Yes → `approved: true`. No, back, or closing it → `approved: false`. Typing a change instead (e.g. "use the other card") → send it as `text` |
 | `ask_cancel` | Close that question or dialog | — |
-| `done` | A result card. `outcome` picks the badge: `completed` green "Done", `unconfirmed` amber "Check before trying again", `failed` red "Couldn't finish", `stopped` grey "Stopped", `needs_user` blue "Needs you". Below it: `summary`, the `proof` lines ("Seen on screen: Order placed!"), and when `last_action` is present a warning line: `Last action: tap "Place order" (unknown)` | New task, view details (`GET /tasks/{id}`) |
-| `error` with `fatal: true` | The `message` as an error card, then the connection ends. For `busy` offer "Stop the other task" (`POST /tasks/{task_id}/stop`) | — |
+| `done` | A result card. `outcome` picks the badge: `completed` green "Done", `unconfirmed` amber "Check before trying again", `failed` red "Couldn't finish", `stopped` grey "Stopped", `needs_user` blue "Needs you". Below it: `summary`, the `proof` lines ("Seen on screen: Order placed!"), and when `last_action` is present a warning line: `Last action: tap "Place order" (unknown)` | New task |
+| `error` with `fatal: true` | The `message` as an error card, then the connection ends. | — |
 | `error` with `fatal: false` | Nothing for the user (log it) | — |
 | connection dropped before `done` | "Reconnecting…" banner while you retry `rejoin` (rule 14) | Stop |
 
@@ -432,63 +432,11 @@ a typed correction while running → `update` with the text.
 
 ## 12. HTTP endpoints for the app
 
-Same address and port as the WebSocket, plain JSON over HTTP. Use them for the connection screen, a history screen and a
-task details screen. Requests that carry an `Origin` header (web pages) are refused for `POST`.
+Same address and port as the WebSocket. Only one for now:
 
 | Request | Gives |
 | --- | --- |
 | `GET /health` | `ok` (plain text) — the connection test button |
-| `GET /status` | Is the server up, which AI it uses, and what is running now |
-| `GET /tasks?device_id=<id>&limit=50` | Past and current tasks, newest first (`device_id` optional, `limit` 1–200) |
-| `GET /tasks/{task_id}` | One task in full: steps, questions and answers, proof, warnings. `404` if unknown |
-| `POST /tasks/{task_id}/stop` | Stops a running task (same as sending `stop` on its connection). `404` if it isn't running |
 
-`GET /status`
-
-```json
-{
-  "ok": true,
-  "protocol": 1,
-  "mode": "normal",
-  "ai": {"provider": "openai_style", "model": "z-ai/glm-5.3-flash", "free": true,
-         "note": "NVIDIA free trial — no personal or card data under its terms", "sees_pictures": true},
-  "running": [{"task_id": "t-5c1e…", "device_id": "8f2d…", "goal": "Order a large pepperoni pizza from DoorDash",
-               "status": "waiting_for_approval", "now": "Place order at Tony's Pizzeria?", "step": 13}]
-}
-```
-
-`mode` is `"smoke"` (and `ai` is `null`) when the backend runs the connection test instead of the AI.
-
-`GET /tasks`
-
-```json
-{"tasks": [{
-  "task_id": "t-5c1e…", "goal": "Order a large pepperoni pizza from DoorDash", "device_id": "8f2d…",
-  "ai": "z-ai/glm-5.3-flash (integrate.api.nvidia.com)", "started_at": "2026-10-18T02:05:35.120+00:00",
-  "ended_at": "2026-10-18T02:07:02.811+00:00", "status": "completed",
-  "summary": "Ordered 1 Large Pepperoni Pizza from Tony's Pizzeria. Total $31.20.", "steps": 14
-}]}
-```
-
-`status` is the `done` outcome (`completed`, `unconfirmed`, `failed`, `stopped`, `needs_user`), or `running` /
-`paused` / `interrupted` (connection lost; can still be rejoined) while unfinished. A running task also has `now` and
-`step`, as in `/status`.
-
-`GET /tasks/{task_id}` — everything in the list entry, plus:
-
-```json
-{
-  "proof": ["Order placed!", "Order #4512"],
-  "corrections": [],
-  "done_for_good": ["approved and tapped \"Place order\", total $31.20"],
-  "unsure": [],
-  "questions": [{"at": "2026-10-18T02:06:58.004+00:00", "kind": "confirm",
-                 "text": "Place order at Tony's Pizzeria: 1 Large Pepperoni Pizza, total $31.20\nButton: “Place order”\nTotal on screen: $31.20",
-                 "answer": "approved"}],
-  "steps": [{"n": 1, "action": "open_app", "label": "DoorDash", "why": "Open DoorDash", "status": "ok",
-             "result": "new screen: Get $0 delivery fees with DashPass"}]
-}
-```
-
-Show `unsure` lines prominently: each is an action that may or may not have happened (for example a "Place order" whose
-answer was lost). Secret answers (codes, card numbers) are never stored and show as hidden.
+History, task details and an HTTP stop button were removed until the app needs them; a task's full record is in
+`backend/data/tasks/<task_id>.jsonl` (read it with `python -m jarvis.dev.trace`).

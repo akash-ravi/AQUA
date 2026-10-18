@@ -36,7 +36,6 @@ class View:
     text: str
     lines: list[Line]
     by_index: dict[int, Line]
-    title: str
     app: str
     signature: str
 
@@ -83,29 +82,22 @@ class Tree:
 
 def render(screen: Screen, apps: dict[str, str] | None = None, max_lines: int = 150) -> View:
     tree = Tree(screen)
-    keyboard_top = screen.keyboard_top
-
-    def visible(node: Node) -> bool:
-        return keyboard_top is None or node.bounds[1] < keyboard_top
-
     folded: set[int] = set()
     labels: dict[int, str] = {}
     first_texts: dict[int, str] = {}
     shown: list[Node] = []
     for node in tree.nodes.values():
-        if node.index in folded or not visible(node):
+        if node.index in folded:
             continue
         label = own_text(node)
         if not label and folds_children(node):
-            parts = plain_parts(tree, node, visible)
+            parts = plain_parts(tree, node)
             folded.update(part.index for part, _ in parts)
             label = " · ".join(text for _, text in parts)
             if parts:
                 first_texts[node.index] = parts[0][1]
-        if not interactive(node):
-            label = label or clean_text(node.state) or clean_text(node.hint)
-            if not label:
-                continue
+        if not interactive(node) and not label:
+            continue
         if not label and node.resource_id and not node.editable and not node.scrollable:
             label = "id: " + node.resource_id.split("/")[-1]
         labels[node.index] = label
@@ -133,12 +125,9 @@ def render(screen: Screen, apps: dict[str, str] | None = None, max_lines: int = 
     lines, hidden_count = fit(tree, lines, max_lines)
     by_index = {line.index: line for line in lines}
     app = (apps or {}).get(screen.package_name) or screen.package_name
-    title = clean_text(screen.title) or next((line.label for line in lines if line.role == "heading"), "")
 
-    text_lines = [header(screen, lines, app, title)]
-    if screen.note == "no_window":
-        text_lines.append("(the phone could not read this screen)")
-    elif not lines:
+    text_lines = [f"App: {app}"]
+    if not lines:
         text_lines.append("(nothing readable on this screen)")
     text_lines += [line_text(line) for line in lines]
     if hidden_count:
@@ -146,20 +135,9 @@ def render(screen: Screen, apps: dict[str, str] | None = None, max_lines: int = 
     if screen.truncated:
         text_lines.append("(the phone sent only part of this screen)")
 
-    view = View(screen, "\n".join(text_lines), lines, by_index, title, app, "")
+    view = View(screen, "\n".join(text_lines), lines, by_index, app, "")
     view.signature = signature(view)
     return view
-
-
-def header(screen: Screen, lines: list[Line], app: str, title: str) -> str:
-    keyboard = "Keyboard: closed"
-    if screen.keyboard_top is not None:
-        typing = next((line for line in lines if line.role == "field" and line.node.focused), None)
-        keyboard = f"Keyboard: open, typing in [{typing.index}]" if typing else "Keyboard: open"
-    parts = [f"App: {app}", f"Screen: {title or '(no title)'}", keyboard]
-    if screen.loading:
-        parts.append("Loading")
-    return " | ".join(parts)
 
 
 def line_text(line: Line) -> str:
@@ -185,8 +163,6 @@ def role_of(node: Node, has_shown_children: bool) -> str:
         return "check"
     if "Tab" in kind and "Table" not in kind and not node.scrollable:
         return "tab"
-    if node.heading:
-        return "heading"
     if node.scrollable:
         return "list"
     if node.clickable:
@@ -199,48 +175,15 @@ def role_of(node: Node, has_shown_children: bool) -> str:
 def states_of(node: Node, role: str, label: str, screen: Screen) -> list[str]:
     states = []
     if role == "field":
-        if node.password:
-            states.append("password")
         if not label:
-            hint = clean_text(node.hint) or clean_text(node.description)
-            states.append(f'empty, hint "{cut(hint, MAX_LABEL)}"' if hint else "empty")
+            states.append("empty")
     elif not label and role != "list":
         states.append(f"no label, {position(node, screen)}" if node.clickable else "no label")
-    if node.selected:
-        states.append("selected")
     if role == "switch":
         states.append("on" if node.checked else "off")
     elif node.checkable:
         states.append("checked" if node.checked else "not checked")
-    if not node.enabled:
-        states.append("disabled")
-    if node.error:
-        states.append(f'error: "{cut(clean_text(node.error), MAX_LABEL)}"')
-    if role == "field" and node.focused:
-        states.append("typing here")
-    state = clean_text(node.state)
-    if state and normalize(state) not in normalize(label) and normalize(state) not in [normalize(s) for s in states]:
-        states.append(cut(state, MAX_LABEL))
-    hint = scroll_hint(node.scroll)
-    if hint:
-        states.append(hint)
     return states
-
-
-def scroll_hint(directions: list[str]) -> str | None:
-    if "up" in directions and "down" in directions:
-        return "more above and below"
-    if "down" in directions:
-        return "more below"
-    if "up" in directions:
-        return "more above"
-    if "left" in directions and "right" in directions:
-        return "more to the left and right"
-    if "right" in directions:
-        return "more to the right"
-    if "left" in directions:
-        return "more to the left"
-    return None
 
 
 def position(node: Node, screen: Screen) -> str:
@@ -258,14 +201,14 @@ def item_name(tree: Tree, button: Node, first_texts: dict[int, str]) -> str | No
             break
         name = own_text(ancestor) or first_texts.get(ancestor.index)
         if not name:
-            parts = plain_parts(tree, ancestor, lambda node: True)
+            parts = plain_parts(tree, ancestor)
             name = parts[0][1] if parts else None
         if name:
             return name
     siblings = tree.children.get(tree.parent_index(button), [])
     earlier = siblings[: next(i for i, s in enumerate(siblings) if s.index == button.index)]
     for sibling in reversed(earlier):
-        parts = plain_parts(tree, sibling, lambda node: True)
+        parts = plain_parts(tree, sibling)
         name = own_text(sibling) or (parts[0][1] if parts else None)
         if name:
             return name
@@ -303,7 +246,7 @@ def clean_text(text: str | None) -> str:
     return " ".join(text.split()) if text else ""
 
 
-def plain_parts(tree: Tree, node: Node, keep) -> list[tuple[Node, str]]:
+def plain_parts(tree: Tree, node: Node) -> list[tuple[Node, str]]:
     parts = []
     seen = {node.index}
     stack = list(reversed(tree.children.get(node.index, [])))
@@ -312,7 +255,7 @@ def plain_parts(tree: Tree, node: Node, keep) -> list[tuple[Node, str]]:
         if child.index in seen:
             continue
         seen.add(child.index)
-        if interactive(child) or not keep(child):
+        if interactive(child):
             continue
         text = own_text(child)
         if text:
@@ -340,7 +283,7 @@ def subtree_text(screen: Screen, index: int) -> str:
     for each in [node, *tree.descendants(node)]:
         text = clean_text(each.text)
         description = clean_text(each.description)
-        for part in (text, description if description != text else "", clean_text(each.hint), each.resource_id or ""):
+        for part in (text, description if description != text else "", each.resource_id or ""):
             if part:
                 parts.append(part)
     return " ".join(parts)
@@ -354,28 +297,17 @@ def signature(view: View) -> str:
             label = re.sub(r"\d", "#", label)
             states = [re.sub(r"\d", "#", s) for s in states]
         items.add(json.dumps([line.role, label, states], ensure_ascii=False))
-    keyboard_open = view.screen.keyboard_top is not None
-    data = json.dumps([view.screen.package_name, view.title, keyboard_open, sorted(items)], ensure_ascii=False)
+    data = json.dumps([view.screen.package_name, sorted(items)], ensure_ascii=False)
     return hashlib.sha1(data.encode()).hexdigest()[:16]
 
 
-def describe_change(before: View, after: View, settled: bool = True) -> str:
-    note = "" if settled else " (screen was still changing)"
+def describe_change(before: View, after: View) -> str:
     if before.signature == after.signature:
-        return "no change" + note
-    if (
-        before.screen.package_name != after.screen.package_name
-        or before.title != after.title
-        or same_share(before, after) < SAME_SCREEN_SHARE
-    ):
-        return f"new screen: {after.title or after.app}{note}"
+        return "no change"
+    if before.screen.package_name != after.screen.package_name or same_share(before, after) < SAME_SCREEN_SHARE:
+        return f"new screen: {after.app}"
 
     changes = []
-    before_open = before.screen.keyboard_top is not None
-    after_open = after.screen.keyboard_top is not None
-    if before_open != after_open:
-        changes.append("keyboard opened" if after_open else "keyboard closed")
-
     pairs, gone, new = pair_lines(before.lines, after.lines)
     edits = []
     for old, line in pairs:
@@ -386,8 +318,8 @@ def describe_change(before: View, after: View, settled: bool = True) -> str:
     changes += edits[:3]
     changes += ([f"new {line.role} {name_of(line)}" for line in new] + [f"{name_of(line)} gone" for line in gone])[:2]
     if not changes:
-        return "same screen; small changes" + note
-    return "same screen; changed: " + "; ".join(changes) + note
+        return "same screen; small changes"
+    return "same screen; changed: " + "; ".join(changes)
 
 
 def same_share(before: View, after: View) -> float:
@@ -454,20 +386,20 @@ def proof_texts(view: View) -> list[str]:
     texts: list[str] = []
     for line in view.lines:
         node = line.node
-        if node.editable or node.password:
+        if node.editable:
             continue
         candidates = [line.label, clean_text(node.text), clean_text(node.description)]
         if folds_children(node) and not own_text(node):
-            candidates += [text for _, text in plain_parts(tree, node, lambda each: True)]
+            candidates += [text for _, text in plain_parts(tree, node)]
         for text in candidates:
             if text and text not in texts:
                 texts.append(text)
     return texts
 
 
-def find_lines(view: View, label: str, role: str | None = None) -> list[Line]:
+def find_lines(view: View, label: str) -> list[Line]:
     wanted = normalize(label)
-    return [line for line in view.lines if normalize(line.label) == wanted and (role is None or line.role == role)]
+    return [line for line in view.lines if normalize(line.label) == wanted]
 
 
 def normalize(text: str) -> str:

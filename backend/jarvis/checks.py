@@ -6,11 +6,8 @@ from jarvis import screen as screens
 TARGETED = {"tap", "type_text", "confirm_and_tap"}
 
 
-def check_decision(tool: str, args: dict, view, apps: dict[str, str], offered: set[str],
-                   dead_ends: set[tuple]) -> tuple[dict, str] | str:
+def check_decision(tool: str, args: dict, view, apps: dict[str, str], dead_ends: set[tuple]) -> tuple[dict, str] | str:
     """Returns (possibly corrected args, a note for the log), or a plain warning for the AI."""
-    if tool not in offered:
-        return f"unknown action '{tool}'; use one of: {', '.join(sorted(offered))}"
     args = dict(args)
     note = ""
 
@@ -51,15 +48,8 @@ def check_decision(tool: str, args: dict, view, apps: dict[str, str], offered: s
             return "that app is already open"
         args["package_name"] = found
 
-    if tool == "ask_user":
-        if not (args.get("question") or "").strip():
-            return "ask_user needs a question"
-        if args.get("choices"):
-            args["choices"] = [str(choice)[:60] for choice in args["choices"]][:6]
-    if tool == "confirm_and_tap" and not (args.get("summary") or "").strip():
-        return "confirm_and_tap needs a summary of what will happen, with the total"
-    if tool == "give_up" and not (args.get("reason") or "").strip():
-        return "give_up needs a reason"
+    if tool == "ask_user" and args.get("choices"):
+        args["choices"] = [choice[:60] for choice in args["choices"]][:6]
 
     if tool in TARGETED | {"scroll"} and args.get("target") is not None:
         label = view.by_index[args["target"]].label if args["target"] in view.by_index else ""

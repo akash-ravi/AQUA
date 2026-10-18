@@ -8,9 +8,7 @@ dependencies = [
     "uvicorn[standard]",
     "pydantic",
     "pydantic-settings",
-    "httpx",
     "anthropic",
-    "websockets",
     "pillow",
 ]
 
