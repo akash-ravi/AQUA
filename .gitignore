@@ -1,0 +1,23 @@
+# macOS metadata
+.DS_Store
+._*
+.Spotlight-V100/
+.Trashes/
+
+# Windows metadata
+Thumbs.db
+Desktop.ini
+
+# Editor temporary files
+*.swp
+*.swo
+*~
+
+# Local environment secrets (keep example files trackable)
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Logs
+*.log
