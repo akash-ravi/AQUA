@@ -2,14 +2,14 @@ import asyncio
 import logging
 import time
 
-from jarvis import checks, safety
-from jarvis import screen as screens
-from jarvis.claude import AIError, AIUnavailable, BadReply, RateLimited
-from jarvis.messages import Command, Done
-from jarvis.phone import Interrupted, PhoneGone, new_command
-from jarvis.pictures import marked_picture, needs_picture
-from jarvis.prompt import SYSTEM_PROMPT, build_step_message, plain_error, retry_note
-from jarvis.task import Notebook, Step, Task
+from src.agent import checks, safety
+from src.agent import screen as screens
+from src.ai.claude import AIError, AIUnavailable, BadReply, RateLimited
+from src.phone.messages import Command, Done
+from src.phone.link import Interrupted, PhoneGone, new_command
+from src.agent.pictures import marked_picture, needs_picture
+from src.agent.prompt import SYSTEM_PROMPT, build_step_message, plain_error, retry_note
+from src.agent.task import Notebook, Step, Task
 
 log = logging.getLogger("jarvis.brain")
 
@@ -38,11 +38,11 @@ class TaskEnded(Exception):
 
 
 def brain_runner(ai):
-    async def run(server_run) -> Done | None:
+    async def run(server_run) -> None:
         task = Task(goal=server_run.goal, device_id=server_run.device_id, id=server_run.task_id)
         notebook = Notebook.for_task(server_run.settings.data_dir, task.id)
         notebook.write("task", task_id=task.id, goal=task.goal, device_id=task.device_id, ai=ai.name)
-        return await Brain(task, server_run.link, ai, notebook).run()
+        await Brain(task, server_run.link, ai, notebook).run()
     return run
 
 
@@ -68,7 +68,7 @@ class Brain:
 
     # ---------- the loop ----------
 
-    async def run(self) -> Done | None:
+    async def run(self) -> None:
         try:
             await self.read_screen()
             while True:
@@ -80,13 +80,11 @@ class Brain:
                 if decision is not None:
                     await self.act(decision)
         except TaskEnded as end:
-            return await self.end(end.outcome, end.summary, end.proof)
+            await self.end(end.outcome, end.summary, end.proof)
         except PhoneGone:
-            self.task.status = "interrupted"
             self.notebook.write("status", to="interrupted", reason="the phone disconnected")
             self.save()
             log.info("task %s: phone disconnected", self.task.id)
-            return None
 
     async def think(self):
         view = self.view
@@ -379,12 +377,6 @@ class Brain:
                 "Use a visible Search/Go button or a suggestion matching the query on the fresh screen; "
                 "if none is available, ask the user to press Search on the keyboard."
             )
-        elif command.action == "type_text" and command.submit and result.status == "ok" and result.submitted is not True:
-            self.warnings.append(
-                "The phone acknowledged typing but did not confirm search submission (older phone builds may ignore submit). "
-                "Check the fresh screen for actual results. If it still shows suggestions, tap a visible Search/Go "
-                "button or a matching suggestion instead of retyping; ask the user to press Search if none is available."
-            )
         self.notebook.write("step_result", n=n, command_id=command.command_id, status=result.status, error=error)
         if step:
             step.status = result.status
@@ -462,9 +454,7 @@ class Brain:
     def committed(self) -> bool:
         return any(step.irreversible and step.status in ("ok", "unknown") for step in self.task.steps)
 
-    async def end(self, outcome: str, summary: str, proof: list[str] | None) -> Done:
-        self.task.status = outcome
-        self.task.work_seconds = time.monotonic() - self.started - self.user_time
+    async def end(self, outcome: str, summary: str, proof: list[str] | None) -> None:
         if self.task.unsure and outcome in ("stopped", "failed", "unconfirmed"):
             summary += " Heads-up: " + "; ".join(self.task.unsure) + "."
         done = Done(outcome=outcome, summary=summary[:600])
@@ -475,7 +465,6 @@ class Brain:
             await self.link.finish(done)
         except PhoneGone:
             pass
-        return done
 
     # ---------- learning from each step ----------
 

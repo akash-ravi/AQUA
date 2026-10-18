@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass
 
-from jarvis import screen as screens
+from src.agent import screen as screens
 
 RISKY = re.compile(
     r"\b(place order|order now|pay now|pay|buy now|buy|purchase|send|delete|confirm order|confirm payment|"

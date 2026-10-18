@@ -22,7 +22,7 @@ The backend prints both addresses when it starts. Make the address an editable s
 - Size limits: `result` up to 12 MB (screenshots), every other message up to 64 KB.
 - **One task per connection.** The backend closes the socket (code 1000) right after `done`. Don't reconnect after a normal close.
 - Don't send an `Origin` header. Browsers send one, native clients (OkHttp) don't; the backend refuses connections that have it.
-- No password in version 1 (development on a trusted network, see DECISIONS.md).
+- No password in version 1 (development on a trusted network, see implementation-decisions.md).
 - Keep the connection alive with OkHttp `pingInterval(15, SECONDS)`.
 
 **Conventions**
@@ -439,4 +439,4 @@ Same address and port as the WebSocket. Only one for now:
 | `GET /health` | `ok` (plain text) — the connection test button |
 
 History, task details and an HTTP stop button were removed until the app needs them; a task's full record is in
-`backend/data/tasks/<task_id>.jsonl` (read it with `python -m jarvis.dev.trace`).
+`backend/data/tasks/<task_id>.jsonl`.
