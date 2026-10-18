@@ -44,6 +44,7 @@ class AgentOverlay(
     private var state = OverlayState()
     private var expanded = false
     private var attached = false
+    private var dismissing = false
     private var listening = false
 
     private val orb = OrbView(context, level).apply {
@@ -148,11 +149,35 @@ class AgentOverlay(
         setTitle("Jarvis assistant")
     }
 
+    /** Rises and scales up into place; showing again mid-dismiss reverses from where it is. */
     fun show() {
-        if (attached) return
+        if (attached) {
+            if (dismissing) { dismissing = false; animateIn() }
+            return
+        }
+        root.alpha = 0f
+        root.scaleX = ENTER_SCALE
+        root.scaleY = ENTER_SCALE
+        root.translationY = dp(16).toFloat()
         windows.addView(root, params)
         attached = true
         render(state)
+        animateIn()
+    }
+
+    private fun animateIn() {
+        root.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f)
+            .setDuration(ENTER_MS).setInterpolator(Motion.EnterEase).start()
+    }
+
+    /** Shrinks and fades out, then removes the window. */
+    fun dismiss() {
+        if (!attached || dismissing) return
+        dismissing = true
+        keyboard.hideSoftInputFromWindow(input.windowToken, 0)
+        root.animate().alpha(0f).scaleX(EXIT_SCALE).scaleY(EXIT_SCALE).translationY(dp(12).toFloat())
+            .setDuration(EXIT_MS).setInterpolator(Motion.ExitEase)
+            .withEndAction { if (dismissing) close() }.start()
     }
 
     fun render(next: OverlayState) {
@@ -208,15 +233,24 @@ class AgentOverlay(
 
     fun close() {
         if (!attached) return
+        dismissing = false
+        root.animate().cancel()
         keyboard.hideSoftInputFromWindow(input.windowToken, 0)
         windows.removeView(root)
         attached = false
     }
 
     private fun setExpanded(value: Boolean) {
+        val opening = value && !expanded
         expanded = value
         render(state)
         if (value && state.acceptsInput) input.requestFocus()
+        // The orb grows into the panel rather than cutting to it.
+        if (opening && attached && !dismissing) {
+            root.scaleX = OPEN_SCALE
+            root.scaleY = OPEN_SCALE
+            root.animate().scaleX(1f).scaleY(1f).setDuration(ENTER_MS).setInterpolator(Motion.EnterEase).start()
+        }
     }
 
     private fun updateWindow() {
@@ -277,5 +311,10 @@ class AgentOverlay(
 
     private companion object {
         const val ORB_DP = 72
+        const val ENTER_SCALE = 0.8f
+        const val EXIT_SCALE = 0.9f
+        const val OPEN_SCALE = 0.92f
+        const val ENTER_MS = 320L
+        const val EXIT_MS = 260L
     }
 }

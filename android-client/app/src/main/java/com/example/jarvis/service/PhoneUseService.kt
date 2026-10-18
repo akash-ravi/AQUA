@@ -165,8 +165,8 @@ class PhoneUseService : AccessibilityService() {
     fun hideOverlay() {
         voice?.cancel()
         overlayVisible = false
-        overlay?.close()
-        closeAura()
+        overlay?.dismiss()
+        updateAura()
     }
 
     private fun setCaptureHidden(hidden: Boolean) {
@@ -178,7 +178,7 @@ class PhoneUseService : AccessibilityService() {
     private fun updateAura() {
         if (auraUnavailable) return
         try {
-            aura?.render(OverlayState.from(AgentState.state.value).mode, overlayVisible && !captureHidden, listening)
+            aura?.render(OverlayState.from(AgentState.state.value).mode, overlayVisible, listening, captureHidden)
         } catch (error: RuntimeException) {
             // Decorative UI must not prevent the executor from starting or answering a command.
             auraUnavailable = true
