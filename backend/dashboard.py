@@ -170,11 +170,11 @@ def overview(runs: list[dict]) -> None:
     for part, values in zip(PARTS, zip(*[breakdown(r).values() for r in chart.to_dict("records")])):
         chart[part] = values
     st.subheader("Where the time went, per run (oldest → newest)")
-    st.altair_chart(stacked(chart, "run", "run", ["goal ", "outcome"]), use_container_width=True)
+    st.altair_chart(stacked(chart, "run", "run", ["goal ", "outcome"]), width='stretch')
 
     table = df.assign(outcome=df.outcome.map(lambda o: OUTCOMES.get(o, o)), started=pd.to_datetime(df.started).dt.tz_convert(None))
     st.dataframe(table[["started", "goal", "outcome", "total", "ai", "phone", "user", "steps", "ai_calls", "model", "id"]],
-                 hide_index=True, use_container_width=True,
+                 hide_index=True, width='stretch',
                  column_config={k: st.column_config.NumberColumn(format="%.1f s") for k in ("total", "ai", "phone", "user")})
 
 
@@ -234,7 +234,7 @@ def run_page(run: dict) -> None:
         x=alt.X("sum(seconds):Q", stack="normalize", title=None, axis=alt.Axis(format="%")),
         color=alt.Color("part:N", scale=alt.Scale(domain=PARTS, range=COLORS), legend=alt.Legend(orient="top", title=None)),
         order=alt.Order("part_order:Q"), tooltip=["part", alt.Tooltip("seconds:Q", format=".2f")],
-    ).transform_calculate(part_order=f"indexof({json.dumps(PARTS)}, datum.part)").properties(height=60), use_container_width=True)
+    ).transform_calculate(part_order=f"indexof({json.dumps(PARTS)}, datum.part)").properties(height=60), width='stretch')
     st.caption("Other = wait steps, backoff after AI errors, screenshot drawing and checks.")
 
     if turns:
@@ -242,7 +242,7 @@ def run_page(run: dict) -> None:
         df = pd.DataFrame([{"turn": g["n"], "tool": g["turn"].get("tool") or "–",
                             "label": ((g["turn"].get("step") or {}).get("label") or "")[:50],
                             **breakdown(g["turn"])} for g in turns])
-        st.altair_chart(stacked(df, "turn", "turn", ["tool", "label"]), use_container_width=True)
+        st.altair_chart(stacked(df, "turn", "turn", ["tool", "label"]), width='stretch')
 
     if len(sp):
         st.subheader("Timeline")
@@ -252,14 +252,14 @@ def run_page(run: dict) -> None:
             color=alt.Color("lane:N", scale=alt.Scale(domain=["AI", "Phone", "You"], range=COLORS[:3]), legend=None),
             stroke=alt.condition("datum.problem", alt.value("#d03b3b"), alt.value(None)), strokeWidth=alt.value(2),
             tooltip=["turn", "what", "ms"],
-        ).properties(height=140), use_container_width=True)
+        ).properties(height=140), width='stretch')
 
         phone = sp[sp.lane == "Phone"]
         if len(phone):
             st.subheader("Phone commands by type")
             stats = phone.groupby("action").ms.agg(["count", "mean", "median", "max"]).reset_index().sort_values("mean", ascending=False)
             st.dataframe(stats.rename(columns={"mean": "avg ms", "median": "median ms", "max": "max ms"}).round(0),
-                         hide_index=True, use_container_width=True)
+                         hide_index=True, width='stretch')
 
     st.subheader("Journey")
     slowest = {g["n"] for g in sorted(turns, key=lambda g: -g["turn"]["total"])[:3]} if len(turns) > 3 else set()
@@ -275,7 +275,7 @@ def run_page(run: dict) -> None:
 
     with st.expander(f"All events ({len(events)})"):
         st.dataframe(pd.DataFrame([{k: (json.dumps(v) if isinstance(v, (dict, list)) else v) for k, v in e.items()}
-                                   for e in events if e["event"] != "state"]), use_container_width=True)
+                                   for e in events if e["event"] != "state"]), width='stretch')
 
 
 def journey_title(g: dict, slowest: set) -> str:
