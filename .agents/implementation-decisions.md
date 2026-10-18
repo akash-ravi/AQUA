@@ -30,3 +30,16 @@ The user permits task-relevant phone content, including screen text and screensh
 - Exact model selection after capability probes with that account.
 - Android connection details and an actual executor smoke test.
 - Order-specific choices and account/payment interaction, requested during the live task as needed.
+
+## Backend implementation decisions
+
+Recorded October 17, 2026, while building `backend/`.
+
+- **Python 3.12, FastAPI, plain async loop.** The handoff proposed LangGraph; a plain loop (`brain.py`) is easier to read and avoids relying on framework replay for exactly-once actions. Flat files with plain names replace the handoff's folder tree.
+- **Phone protocol v1 defined in `phone-protocol.md`.** The "supplied Phone Executor Protocol" was not found anywhere, so it was written from the rules above: one task per WebSocket at `/agent`, one command in flight, JSON text frames, explicit `ok/failed/rejected/unknown` results, `ask` + approved `answer` before anything irreversible, then `confirmed: true` plus `must_see` amounts the phone re-checks. Screenshots travel inline as base64 JPEG for this one-phone prototype.
+- **Default AI: GLM-5.3-Flash on NVIDIA's free endpoint** (`z-ai/glm-5.3-flash`). The handoff's OpenRouter `:free` route had no providers on this date. Claude, Groq, Z.ai and local Ollama are one `.env` change away.
+- **No paid fallback.** Paid routes (Claude, unknown hosts, OpenRouter without `:free`) refuse to start unless `ALLOW_PAID_MODELS=true`. A used-up quota stops the task with a message. Claude runs with `fallbacks: "default"`; a log line says when a fallback model answered.
+- **Task notebooks instead of SQLite.** Each task is `backend/data/tasks/<id>.jsonl`, written (and synced to disk) before each command is sent. After a restart, unanswered commands are marked unknown. A phone can rejoin within 30 minutes; an irreversible action with an unknown result is never repeated automatically.
+- **Safety:** irreversible actions need `confirm_and_tap`, a summary whose amounts are on screen including the total, and a fresh Yes; the backend re-reads the screen after the Yes. Finishing needs proof copied from the current screen, after the order step. Secrets (passwords, codes, card numbers) are never typed by the AI or stored.
+- **No authentication on the LAN** (per the earlier decision), but connections with a browser `Origin` header are refused and rejoining needs a per-task key.
+- **Open decision:** NVIDIA's free-trial terms forbid personal, financial and card data. Decide before the real checkout pass: accept for testing, use Groq/Ollama for it, or use Claude.

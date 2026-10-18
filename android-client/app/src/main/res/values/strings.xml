@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Aqua</string>
+    <string name="accessibility_service_description">Lets Aqua read and capture the screen.</string>
+</resources>

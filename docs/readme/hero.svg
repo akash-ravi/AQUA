@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 460" width="1280" height="460" role="img" aria-label="AQUA: say what you want, and it taps through your Android apps for you">
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFB77A"/>
+      <stop offset="0.5" stop-color="#FF6B35"/>
+      <stop offset="1" stop-color="#FF3B4E"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF3B4E"/>
+      <stop offset="0.5" stop-color="#FF6B35"/>
+      <stop offset="1" stop-color="#FFB77A"/>
+    </linearGradient>
+    <radialGradient id="orbCore" cx="0.42" cy="0.38" r="0.7">
+      <stop offset="0" stop-color="#FFF3EC"/>
+      <stop offset="0.25" stop-color="#FFB77A"/>
+      <stop offset="0.65" stop-color="#FF6B35"/>
+      <stop offset="1" stop-color="#FF3B4E"/>
+    </radialGradient>
+    <radialGradient id="pool" cx="0.5" cy="1" r="0.8">
+      <stop offset="0" stop-color="#FF6B35" stop-opacity="0.45"/>
+      <stop offset="0.6" stop-color="#FF3B4E" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#FF3B4E" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FF6B35" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#FF6B35" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dots" width="14" height="14" patternUnits="userSpaceOnUse">
+      <circle cx="7" cy="7" r="1.6" fill="#FF6B35"/>
+    </pattern>
+    <linearGradient id="dotFade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0.45" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0.5"/>
+    </linearGradient>
+    <mask id="dotMask"><rect width="1280" height="460" fill="url(#dotFade)"/></mask>
+    <filter id="blur18" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="18"/></filter>
+    <filter id="blur6" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="6"/></filter>
+    <clipPath id="frame"><rect width="1280" height="460" rx="28"/></clipPath>
+    <clipPath id="type1"><rect x="222" y="318" height="44" width="0">
+      <animate attributeName="width" dur="12s" repeatCount="indefinite" values="0;566;566;0;0" keyTimes="0;0.14;0.3;0.3001;1"/></rect></clipPath>
+    <clipPath id="type2"><rect x="222" y="318" height="44" width="0">
+      <animate attributeName="width" dur="12s" repeatCount="indefinite" values="0;0;488;488;0;0" keyTimes="0;0.3334;0.46;0.6333;0.6334;1"/></rect></clipPath>
+    <clipPath id="type3"><rect x="222" y="318" height="44" width="0">
+      <animate attributeName="width" dur="12s" repeatCount="indefinite" values="0;0;106;106" keyTimes="0;0.6667;0.72;1"/></rect></clipPath>
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+      .breathe { animation: breathe 4s ease-in-out infinite; }
+      .run { stroke-dasharray: 420 3000; animation: run 7s linear infinite; }
+      .spin { transform-box: fill-box; transform-origin: center; animation: spin 9s linear infinite; }
+      .spinR { transform-box: fill-box; transform-origin: center; animation: spin 13s linear infinite reverse; }
+      .pulse { transform-box: fill-box; transform-origin: center; animation: pulse 3s ease-in-out infinite; }
+      .ripple { transform-box: fill-box; transform-origin: center; animation: ripple 3.6s ease-out infinite; }
+      .r2 { animation-delay: 1.2s; } .r3 { animation-delay: 2.4s; }
+      .blink { animation: blink 1s steps(1) infinite; }
+      .bar { transform-box: fill-box; transform-origin: center; animation: eq 1.1s ease-in-out infinite; }
+      .b2 { animation-delay: .15s; } .b3 { animation-delay: .3s; } .b4 { animation-delay: .45s; } .b5 { animation-delay: .6s; }
+      @keyframes breathe { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+      @keyframes run { from { stroke-dashoffset: 3420; } to { stroke-dashoffset: 0; } }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+      @keyframes ripple { 0% { transform: scale(.85); opacity: .7; } 100% { transform: scale(1.9); opacity: 0; } }
+      @keyframes blink { 0%,50% { opacity: 1; } 50.01%,100% { opacity: 0; } }
+      @keyframes eq { 0%,100% { transform: scaleY(.35); } 50% { transform: scaleY(1); } }
+    </style>
+  </defs>
+
+  <g clip-path="url(#frame)">
+    <rect width="1280" height="460" fill="#100C0B"/>
+    <rect width="1280" height="460" fill="url(#pool)"/>
+    <rect width="1280" height="460" fill="url(#dots)" mask="url(#dotMask)" opacity="0.5"/>
+
+    <!-- screen-edge aura, like the one Aqua draws on the phone -->
+    <rect x="6" y="6" width="1268" height="448" rx="24" fill="none" stroke="url(#edge)" stroke-width="16" filter="url(#blur18)" class="breathe"/>
+    <rect x="3" y="3" width="1274" height="454" rx="26" fill="none" stroke="url(#edge)" stroke-width="1.5" opacity="0.5"/>
+    <rect x="3" y="3" width="1274" height="454" rx="26" fill="none" stroke="#FFF3EC" stroke-width="2.5" class="run" filter="url(#blur6)"/>
+    <rect x="3" y="3" width="1274" height="454" rx="26" fill="none" stroke="#FFB77A" stroke-width="1.5" class="run"/>
+  </g>
+
+  <!-- copy -->
+  <g class="sans">
+    <rect x="72" y="66" width="330" height="32" rx="16" fill="#211714" stroke="#614036"/>
+    <circle cx="94" cy="82" r="5" fill="#FF6B35" class="breathe"/>
+    <text x="108" y="87.5" font-size="14" font-weight="600" fill="#CCADA0" letter-spacing="1.6">AN AI AGENT FOR YOUR PHONE</text>
+
+    <text x="66" y="200" font-size="118" font-weight="800" fill="url(#brand)" letter-spacing="6">AQUA</text>
+    <text x="72" y="252" font-size="28" font-weight="500" fill="#FFF3EC">Say what you want. It taps through your apps.</text>
+    <text x="72" y="286" font-size="18" fill="#CCADA0">Any app, no integration needed. It asks before it pays, and it shows proof when it's done.</text>
+  </g>
+
+  <!-- the spoken request, typed out -->
+  <rect x="72" y="314" width="760" height="52" rx="26" fill="#211714" stroke="#614036"/>
+  <g transform="translate(96 327)">
+    <rect class="bar" x="0" y="4" width="4" height="18" rx="2" fill="#FF6B35"/>
+    <rect class="bar b2" x="8" y="0" width="4" height="26" rx="2" fill="#FF6B35"/>
+    <rect class="bar b3" x="16" y="2" width="4" height="22" rx="2" fill="#FF3B4E"/>
+    <rect class="bar b4" x="24" y="6" width="4" height="14" rx="2" fill="#FF3B4E"/>
+    <rect class="bar b5" x="32" y="3" width="4" height="20" rx="2" fill="#FFB77A"/>
+  </g>
+  <text x="148" y="347" class="sans" font-size="15" fill="#CCADA0">You say</text>
+  <g class="mono" font-size="21" fill="#FFF3EC">
+    <text x="222" y="347" textLength="566" lengthAdjust="spacingAndGlyphs" clip-path="url(#type1)">"Order a large pepperoni from DoorDash"</text>
+    <text x="222" y="347" textLength="488" lengthAdjust="spacingAndGlyphs" clip-path="url(#type2)">"Text Maya I'm running late"</text>
+    <text x="222" y="347" textLength="106" lengthAdjust="spacingAndGlyphs" clip-path="url(#type3)">"Call Mom"</text>
+  </g>
+  <rect y="328" width="2.5" height="26" fill="#FF6B35" class="blink">
+    <animate attributeName="x" dur="12s" repeatCount="indefinite"
+      values="224;792;792;224;224;714;714;224;224;332;332"
+      keyTimes="0;0.14;0.3;0.3001;0.3334;0.46;0.6333;0.6334;0.6667;0.72;1"/>
+  </rect>
+
+  <!-- the orb -->
+  <g transform="translate(1010 228)">
+    <circle r="180" fill="url(#halo)" class="breathe"/>
+    <circle r="92" fill="none" stroke="#FF6B35" stroke-width="2" class="ripple"/>
+    <circle r="92" fill="none" stroke="#FF3B4E" stroke-width="2" class="ripple r2"/>
+    <circle r="92" fill="none" stroke="#FFB77A" stroke-width="2" class="ripple r3"/>
+    <g class="pulse">
+      <circle r="92" fill="url(#orbCore)"/>
+      <g class="spin" opacity="0.8">
+        <ellipse cx="-26" cy="-14" rx="62" ry="34" fill="#FFF3EC" opacity="0.35" filter="url(#blur18)"/>
+        <ellipse cx="34" cy="30" rx="50" ry="28" fill="#FF3B4E" opacity="0.7" filter="url(#blur18)"/>
+      </g>
+      <g class="spinR" opacity="0.7">
+        <ellipse cx="22" cy="-36" rx="40" ry="22" fill="#FFB77A" opacity="0.8" filter="url(#blur18)"/>
+      </g>
+      <circle r="92" fill="none" stroke="#FFF3EC" stroke-opacity="0.35" stroke-width="1.5"/>
+    </g>
+  </g>
+  <g class="sans" font-size="13" font-weight="600" letter-spacing="1.4" fill="#CCADA0" text-anchor="middle">
+    <text x="1010" y="392">SEES THE SCREEN · ACTS · CHECKS ITS WORK</text>
+  </g>
+</svg>

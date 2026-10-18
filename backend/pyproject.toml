@@ -1,0 +1,27 @@
+[project]
+name = "jarvis-backend"
+version = "0.1.0"
+description = "Aqua backend: decides what to do on the phone and tells it, one action at a time."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+    "pydantic-settings",
+    "anthropic",
+    "httpx",
+    "pillow",
+]
+
+[project.optional-dependencies]
+dashboard = ["streamlit", "pandas", "altair"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+jarvis = "src.app:main"
+
+[tool.setuptools.packages.find]
+include = ["src*"]

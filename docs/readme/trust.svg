@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 440" width="1280" height="440" role="img" aria-label="Three guardrails: Aqua asks before anything it can't undo, never types your secrets, and only calls a task done when the screen proves it.">
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFB77A"/>
+      <stop offset="0.5" stop-color="#FF6B35"/>
+      <stop offset="1" stop-color="#FF3B4E"/>
+    </linearGradient>
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+      .yes { animation: yes 6s ease-in-out infinite; }
+      @keyframes yes { 0%,40% { fill: #30211D; } 50%,85% { fill: #FF6B35; } 100% { fill: #30211D; } }
+      .yesRing { opacity: 0; transform-box: fill-box; transform-origin: center; animation: yr 6s ease-out infinite; }
+      @keyframes yr { 0%,44% { opacity: 0; transform: scale(1); } 46% { opacity: .9; } 60%,100% { opacity: 0; transform: scale(1.35); } }
+      .dot { opacity: 0; animation: dot 6s steps(1) infinite; }
+      @keyframes dot { 0% { opacity: 0; } 10%,85% { opacity: 1; } 100% { opacity: 0; } }
+      .shackle { animation: shackle 6s ease-in-out infinite; }
+      @keyframes shackle { 0%,10% { transform: translateY(-8px); } 22%,85% { transform: none; } 100% { transform: translateY(-8px); } }
+      .hl { stroke-dasharray: 520; stroke-dashoffset: 520; animation: hl 6s ease-out infinite; }
+      @keyframes hl { 0%,15% { stroke-dashoffset: 520; } 40%,88% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 520; } }
+      .ck { stroke-dasharray: 50; stroke-dashoffset: 50; animation: ck 6s ease-out infinite; }
+      @keyframes ck { 0%,42% { stroke-dashoffset: 50; } 55%,88% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 50; } }
+    </style>
+  </defs>
+  <rect width="1280" height="440" rx="28" fill="#100C0B"/>
+
+  <!-- card 1 -->
+  <rect x="40" y="40" width="384" height="360" rx="22" fill="#211714" stroke="#614036"/>
+  <g class="sans">
+    <text x="72" y="84" font-size="13" font-weight="700" letter-spacing="2" fill="#FF6B35">GUARDRAIL 1</text>
+    <text x="72" y="114" font-size="23" font-weight="700" fill="#FFF3EC">Asks before it can't undo</text>
+  </g>
+  <rect x="72" y="140" width="320" height="168" rx="16" fill="#100C0B" stroke="#614036"/>
+  <text x="92" y="172" class="sans" font-size="15" font-weight="600" fill="#FFF3EC">Place order at Tony's Pizzeria?</text>
+  <text x="92" y="198" class="sans" font-size="14" fill="#CCADA0">1 Large Pepperoni Pizza</text>
+  <text x="92" y="220" class="sans" font-size="14" fill="#CCADA0">Total <tspan fill="#FFB77A" font-weight="700">$31.20</tspan></text>
+  <rect x="92" y="248" width="130" height="40" rx="20" fill="#30211D" stroke="#614036"/>
+  <text x="157" y="273" class="sans" font-size="15" font-weight="600" fill="#CCADA0" text-anchor="middle">No</text>
+  <rect x="236" y="248" width="136" height="40" rx="20" class="yes" stroke="#FF6B35"/>
+  <rect x="236" y="248" width="136" height="40" rx="20" fill="none" stroke="#FFB77A" stroke-width="2" class="yesRing"/>
+  <text x="304" y="273" class="sans" font-size="15" font-weight="700" fill="#FFF3EC" text-anchor="middle">Yes</text>
+  <text x="72" y="344" class="sans" font-size="14.5" fill="#CCADA0">Order, pay, send, post, delete, book: the</text>
+  <text x="72" y="366" class="sans" font-size="14.5" fill="#CCADA0">exact items and total are read back to you.</text>
+
+  <!-- card 2 -->
+  <rect x="448" y="40" width="384" height="360" rx="22" fill="#211714" stroke="#614036"/>
+  <g class="sans">
+    <text x="480" y="84" font-size="13" font-weight="700" letter-spacing="2" fill="#FF6B35">GUARDRAIL 2</text>
+    <text x="480" y="114" font-size="23" font-weight="700" fill="#FFF3EC">Never types your secrets</text>
+  </g>
+  <rect x="480" y="140" width="320" height="168" rx="16" fill="#100C0B" stroke="#614036"/>
+  <g transform="translate(640 176)">
+    <path d="M-14 0 v-10 a14 14 0 0 1 28 0 v10" fill="none" stroke="#FFB77A" stroke-width="4" class="shackle"/>
+    <rect x="-22" y="0" width="44" height="34" rx="7" fill="#FF6B35"/>
+    <circle cx="0" cy="15" r="4.5" fill="#100C0B"/>
+  </g>
+  <rect x="512" y="232" width="256" height="40" rx="10" fill="#211714" stroke="#614036"/>
+  <text x="528" y="257" class="sans" font-size="13" fill="#CCADA0">CVV</text>
+  <g fill="#FFF3EC">
+    <circle cx="590" cy="252" r="5" class="dot" style="animation-delay:0s"/>
+    <circle cx="610" cy="252" r="5" class="dot" style="animation-delay:.2s"/>
+    <circle cx="630" cy="252" r="5" class="dot" style="animation-delay:.4s"/>
+  </g>
+  <text x="752" y="257" class="sans" font-size="13" fill="#FFB77A" text-anchor="end">you</text>
+  <text x="480" y="344" class="sans" font-size="14.5" fill="#CCADA0">Passwords, codes and card numbers: you type</text>
+  <text x="480" y="366" class="sans" font-size="14.5" fill="#CCADA0">them yourself. They're also hidden from logs.</text>
+
+  <!-- card 3 -->
+  <rect x="856" y="40" width="384" height="360" rx="22" fill="#211714" stroke="#614036"/>
+  <g class="sans">
+    <text x="888" y="84" font-size="13" font-weight="700" letter-spacing="2" fill="#FF6B35">GUARDRAIL 3</text>
+    <text x="888" y="114" font-size="23" font-weight="700" fill="#FFF3EC">"Done" needs proof</text>
+  </g>
+  <rect x="888" y="140" width="320" height="168" rx="16" fill="#100C0B" stroke="#614036"/>
+  <rect x="908" y="160" width="180" height="10" rx="5" fill="#30211D"/>
+  <rect x="908" y="180" width="120" height="10" rx="5" fill="#30211D"/>
+  <text x="928" y="232" class="sans" font-size="21" font-weight="700" fill="#FFF3EC">Order confirmed</text>
+  <rect x="914" y="206" width="210" height="38" rx="8" fill="none" stroke="#FF6B35" stroke-width="2.5" class="hl"/>
+  <circle cx="1166" cy="225" r="18" fill="#FF6B35" fill-opacity=".15" stroke="#FF6B35"/>
+  <path d="M1157 225 l6 6 l12 -12" fill="none" stroke="#FFB77A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" class="ck"/>
+  <rect x="908" y="266" width="200" height="10" rx="5" fill="#30211D"/>
+  <text x="888" y="344" class="sans" font-size="14.5" fill="#CCADA0">It must quote the screen word for word.</text>
+  <text x="888" y="366" class="sans" font-size="14.5" fill="#CCADA0">Tapping a button doesn't count as done.</text>
+</svg>

@@ -1,0 +1,17 @@
+*.iml
+.gradle
+/local.properties
+/.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Agents
+.agents/
+.kotlin/
+
+# On-device speech models from older builds (no longer used; safe to delete)
+/.speech-models/

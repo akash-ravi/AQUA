@@ -1,0 +1,263 @@
+import json
+import uuid
+from typing import Annotated, Literal, Union
+
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, field_validator, model_validator
+
+MAX_RESULT_CHARS = 12_000_000
+MAX_OTHER_CHARS = 64_000
+MAX_TEXT = 2000
+MAX_PROGRESS_TEXT = 120
+MAX_NODE_TEXT = 500
+MAX_NODES = 1500
+MAX_APPS = 500
+MAX_IMAGE_CHARS = 11_000_000
+
+Status = Literal["ok", "failed", "rejected", "unknown"]
+Direction = Literal["down", "up", "left", "right"]
+Action = Literal["read_screen", "tap", "type_text", "scroll", "go_back", "go_home", "open_app", "screenshot", "list_apps", "tap_at", "type_focused", "swipe"]
+
+
+class Message(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+
+# ---- the screen ----
+
+class Node(Message):
+    index: int
+    parent: int | None = None
+    text: str | None = None
+    description: str | None = None
+    resource_id: str | None = None
+    class_name: str | None = None
+    bounds: tuple[int, int, int, int] = (0, 0, 0, 0)
+    clickable: bool = False
+    editable: bool = False
+    scrollable: bool = False
+    checkable: bool = False
+    checked: bool = False
+    sensitive: bool = False
+
+
+class Screen(Message):
+    screen_id: str
+    package_name: str = ""
+    width: int = Field(gt=0)
+    height: int = Field(gt=0)
+    truncated: bool = False
+    nodes: list[Node] = []
+
+
+# ---- phone -> backend ----
+
+class DeviceInfo(Message):
+    width: int = Field(gt=0)
+    height: int = Field(gt=0)
+    capabilities: list[str] = Field(default_factory=list, max_length=10)
+
+
+class App(Message):
+    label: str
+    package_name: str
+
+
+class Start(Message):
+    type: Literal["start"] = "start"
+    task: str = Field(min_length=1, max_length=MAX_TEXT)
+    device: DeviceInfo
+
+
+class ErrorInfo(Message):
+    code: str
+    message: str = ""
+
+
+class Image(Message):
+    data: str = Field(max_length=MAX_IMAGE_CHARS)  # base64
+
+
+class Result(Message):
+    command_id: str
+    status: Status
+    error: ErrorInfo | None = None
+    screen: Screen | None = None
+    image: Image | None = None
+    apps: list[App] | None = None
+
+
+class WireResult(Message):
+    type: Literal["result"] = "result"
+    id: str
+    ok: bool
+    data: dict | None = None
+    error: str | None = None
+    message: str | None = None
+
+
+class Answer(Message):
+    type: Literal["answer"] = "answer"
+    ask_id: str = Field(alias="id")
+    text: str | None = Field(default=None, max_length=MAX_TEXT)
+    source: Literal["text", "voice"] = "text"
+    secret_ref: str | None = Field(default=None, pattern=r"^[0-9a-f-]{36}$")
+
+    @model_validator(mode="after")
+    def secret_is_reference_only(self):
+        if self.secret_ref and (self.source != "voice" or self.text):
+            raise ValueError("secret references require voice provenance and no text")
+        return self
+
+
+class Stop(Message):
+    type: Literal["stop"] = "stop"
+
+
+class Pause(Message):
+    type: Literal["pause"] = "pause"
+
+
+class Resume(Message):
+    type: Literal["resume"] = "resume"
+
+
+PhoneMessage = Annotated[Union[Start, WireResult, Answer, Stop, Pause, Resume], Field(discriminator="type")]
+PHONE_TYPES = {"start", "result", "answer", "stop", "pause", "resume"}
+
+
+# ---- backend -> phone ----
+
+class Command(Message):
+    command_id: str
+    action: Action
+    timeout_ms: int = 10_000
+    screen_id: str | None = None
+    target: int | None = None
+    x: int | None = None
+    y: int | None = None
+    x2: int | None = None
+    y2: int | None = None
+    text: str | None = None
+    secret_ref: str | None = None
+    submit: bool | None = None
+    direction: Direction | None = None
+    package_name: str | None = None
+    confirmed: bool | None = None
+    max_side: int | None = None
+
+
+class SecretTarget(Message):
+    package_name: str
+    screen_id: str
+    target: int
+
+
+class Ask(Message):
+    ask_id: str
+    kind: Literal["question", "confirm", "secret"]
+    text: str
+    secret_target: SecretTarget | None = None
+
+
+class Progress(Message):
+    state: Literal["running", "paused"]
+    text: str
+    step: int = 0
+
+    @field_validator("text", mode="before")
+    @classmethod
+    def short_text(cls, value):
+        value = str(value)
+        return value if len(value) <= MAX_PROGRESS_TEXT else value[: MAX_PROGRESS_TEXT - 1] + "…"
+
+
+class Done(Message):
+    outcome: Literal["completed", "unconfirmed", "failed", "stopped", "needs_user"]
+    summary: str
+
+
+class ErrorMessage(Message):
+    message: str
+
+
+_read_phone_message = TypeAdapter(PhoneMessage)
+
+
+class BadMessage(Exception):
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
+def parse_phone_message(raw: str):
+    if len(raw) > MAX_RESULT_CHARS:
+        raise BadMessage("message is too large")
+    data = _load_object(raw)
+    kind = data.get("type")
+    if kind not in PHONE_TYPES:
+        raise BadMessage(f"unknown message type {kind!r}")
+    if kind != "result" and len(raw) > MAX_OTHER_CHARS:
+        raise BadMessage(f"{kind} message is too large")
+    _truncate_payload(data)
+    try:
+        return _read_phone_message.validate_python(data)
+    except ValidationError as error:
+        raise BadMessage(_first_validation_error(error)) from None
+
+
+def sanitize_screen(screen: Screen) -> Screen:
+    seen: set[int] = set()
+    nodes = []
+    for node in screen.nodes:
+        if node.index in seen:
+            continue
+        left, top, right, bottom = node.bounds
+        left, right = _clamp(left, screen.width), _clamp(right, screen.width)
+        top, bottom = _clamp(top, screen.height), _clamp(bottom, screen.height)
+        if right <= left or bottom <= top:
+            continue
+        parent = node.parent if node.parent in seen else None
+        seen.add(node.index)
+        nodes.append(node.model_copy(update={"bounds": (left, top, right, bottom), "parent": parent}))
+    return screen.model_copy(update={"nodes": nodes})
+
+
+def new_id(prefix: str) -> str:
+    return f"{prefix}-{uuid.uuid4().hex[:16]}"
+
+
+def _load_object(raw: str) -> dict:
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        raise BadMessage("not valid JSON") from None
+    if not isinstance(data, dict):
+        raise BadMessage("expected a JSON object")
+    return data
+
+
+def _truncate_payload(data: dict) -> None:
+    payload = data.get("data")
+    if not isinstance(payload, dict):
+        return
+    if isinstance(payload.get("nodes"), list):
+        if len(payload["nodes"]) > MAX_NODES:
+            payload["nodes"] = payload["nodes"][:MAX_NODES]
+            payload["truncated"] = True
+        for node in payload["nodes"]:
+            if isinstance(node, dict):
+                for key in ("text", "desc"):
+                    if isinstance(node.get(key), str) and len(node[key]) > MAX_NODE_TEXT:
+                        node[key] = node[key][:MAX_NODE_TEXT]
+    if isinstance(payload.get("apps"), list):
+        payload["apps"] = payload["apps"][:MAX_APPS]
+
+
+def _first_validation_error(error: ValidationError) -> str:
+    problem = error.errors()[0]
+    where = ".".join(str(part) for part in problem.get("loc", ()))
+    return f"{where}: {problem.get('msg', 'invalid value')}" if where else problem.get("msg", "invalid value")
+
+
+def _clamp(value: int, limit: int) -> int:
+    return max(0, min(value, limit))

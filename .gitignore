@@ -8,7 +8,8 @@
 Thumbs.db
 Desktop.ini
 
-# Editor temporary files
+# Editor settings and temporary files
+.vscode/
 *.swp
 *.swo
 *~
@@ -21,3 +22,12 @@ Desktop.ini
 
 # Logs
 *.log
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Backend runtime data (task notebooks, saved screens, real-phone fixtures)
+backend/data/

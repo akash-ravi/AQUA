@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 560" width="1280" height="560" role="img" aria-label="A sample Aqua run: it opens DoorDash, searches, adds a large pepperoni, asks before placing the order, and finishes with proof from the screen.">
+  <defs>
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+      .l { opacity: 0; animation: l 16s ease-out infinite; }
+      @keyframes l { 0% { opacity: 0; transform: translateY(6px); } 1.5%,94% { opacity: 1; transform: none; } 97%,100% { opacity: 0; } }
+      .cur { animation: blink 1s steps(1) infinite; }
+      @keyframes blink { 0%,50% { opacity: 1; } 50.01%,100% { opacity: 0; } }
+    </style>
+  </defs>
+  <rect width="1280" height="560" rx="22" fill="#100C0B"/>
+  <rect x="0.5" y="0.5" width="1279" height="559" rx="22" fill="none" stroke="#614036"/>
+  <path d="M0 22 a22 22 0 0 1 22 -22 h1236 a22 22 0 0 1 22 22 v28 h-1280 z" fill="#211714"/>
+  <circle cx="30" cy="25" r="7" fill="#FF3B4E"/><circle cx="54" cy="25" r="7" fill="#FFB77A"/><circle cx="78" cy="25" r="7" fill="#614036"/>
+  <text x="640" y="31" class="sans" font-size="14" fill="#CCADA0" text-anchor="middle">jarvis — sample run</text>
+  <line x1="0" y1="50" x2="1280" y2="50" stroke="#614036"/>
+
+  <g class="mono" font-size="16.5">
+    <!-- columns: who | status shown on screen | action → what changed -->
+    <g class="l" style="animation-delay:.2s">
+      <text x="36" y="92" fill="#FFB77A" font-weight="700">YOU</text>
+      <text x="140" y="92" fill="#FFF3EC">"Order a large pepperoni pizza from DoorDash"</text>
+    </g>
+    <g class="l" style="animation-delay:1.2s">
+      <text x="36" y="134" fill="#FF6B35">AQUA</text><text x="140" y="134" fill="#FFF3EC">Opening DoorDash.</text>
+      <text x="560" y="134" fill="#CCADA0">open_app DoorDash</text><text x="900" y="134" fill="#8FD18A">→ new screen: DoorDash</text>
+    </g>
+    <g class="l" style="animation-delay:2.2s">
+      <text x="36" y="168" fill="#FF6B35">AQUA</text><text x="140" y="168" fill="#FFF3EC">Searching for pizza.</text>
+      <text x="560" y="168" fill="#CCADA0">type_text [3] "pizza" ⏎</text><text x="900" y="168" fill="#8FD18A">→ results appeared</text>
+    </g>
+    <g class="l" style="animation-delay:3.2s">
+      <text x="36" y="202" fill="#FF6B35">AQUA</text><text x="140" y="202" fill="#FFF3EC">Opening Tony's Pizzeria.</text>
+      <text x="560" y="202" fill="#CCADA0">tap [7] "Tony's Pizzeria"</text><text x="900" y="202" fill="#8FD18A">→ new screen</text>
+    </g>
+    <g class="l" style="animation-delay:4.2s">
+      <text x="36" y="236" fill="#FF6B35">AQUA</text><text x="140" y="236" fill="#FFF3EC">Closing the offer popup.</text>
+      <text x="560" y="236" fill="#CCADA0">tap [2] "No thanks"</text><text x="900" y="236" fill="#8FD18A">→ popup gone</text>
+    </g>
+    <g class="l" style="animation-delay:5.2s">
+      <text x="36" y="270" fill="#FF6B35">AQUA</text><text x="140" y="270" fill="#FFF3EC">Choosing Large.</text>
+      <text x="560" y="270" fill="#CCADA0">tap [11] "Large"</text><text x="900" y="270" fill="#8FD18A">→ "Large" now checked</text>
+    </g>
+    <g class="l" style="animation-delay:6.2s">
+      <text x="36" y="304" fill="#FF6B35">AQUA</text><text x="140" y="304" fill="#FFF3EC">Adding the pizza to cart.</text>
+      <text x="560" y="304" fill="#CCADA0">tap [12] "Add to cart"</text><text x="900" y="304" fill="#8FD18A">→ cart: 1 item</text>
+    </g>
+    <g class="l" style="animation-delay:7.2s">
+      <text x="36" y="338" fill="#FF6B35">AQUA</text><text x="140" y="338" fill="#FFF3EC">Going to checkout.</text>
+      <text x="560" y="338" fill="#CCADA0">tap [20] "Checkout"</text><text x="900" y="338" fill="#8FD18A">→ new screen: Checkout</text>
+    </g>
+
+    <g class="l" style="animation-delay:8.4s">
+      <rect x="24" y="358" width="1232" height="44" rx="10" fill="#FF6B35" fill-opacity="0.12" stroke="#FF6B35" stroke-opacity="0.6"/>
+      <text x="36" y="386" fill="#FFB77A" font-weight="700">ASKS</text>
+      <text x="140" y="386" fill="#FFF3EC">Place order at Tony's Pizzeria: 1 Large Pepperoni Pizza, total $31.20?</text>
+    </g>
+    <g class="l" style="animation-delay:9.8s">
+      <text x="36" y="434" fill="#FFB77A" font-weight="700">YOU</text><text x="140" y="434" fill="#FFF3EC">"Yes"</text>
+      <text x="560" y="434" fill="#CCADA0">confirm_and_tap [24] "Place order"</text>
+    </g>
+    <g class="l" style="animation-delay:11s">
+      <text x="36" y="476" fill="#8FD18A" font-weight="700">DONE</text>
+      <text x="140" y="476" fill="#FFF3EC">Ordered 1 Large Pepperoni from Tony's Pizzeria.</text>
+      <text x="900" y="476" fill="#8FD18A">proof: "Order confirmed" ✓</text>
+    </g>
+    <g class="l" style="animation-delay:11.6s">
+      <text x="36" y="520" fill="#CCADA0">$</text>
+      <rect x="56" y="505" width="10" height="20" fill="#FF6B35" class="cur"/>
+    </g>
+  </g>
+</svg>
