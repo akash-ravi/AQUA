@@ -22,6 +22,9 @@ class AgentOverlay(
     private val service: AccessibilityService,
     private val onInput: (AssistantInput) -> Boolean,
     private val onStop: () -> Unit,
+    private val onPause: () -> Unit,
+    private val onContinue: () -> Unit,
+    private val onHide: () -> Unit,
 ) {
     private val windows = service.getSystemService(WindowManager::class.java)
     private val keyboard = service.getSystemService(InputMethodManager::class.java)
@@ -38,6 +41,12 @@ class AgentOverlay(
         setOnClickListener { setExpanded(!expanded) }
     }
     private val stop = button("Stop") { onStop() }
+    private val pause = button("Pause") { if (state.mode == OverlayMode.PAUSED) onContinue() else onPause() }
+    private val controls = LinearLayout(service).apply {
+        gravity = Gravity.END
+        addView(pause)
+        addView(stop)
+    }
     private val prompt = TextView(service).apply {
         setTextColor(Color.rgb(217, 222, 240))
         textSize = 14f
@@ -73,9 +82,10 @@ class AgentOverlay(
         val header = LinearLayout(service).apply {
             gravity = Gravity.CENTER_VERTICAL
             addView(title, LinearLayout.LayoutParams(0, dp(48), 1f))
-            addView(stop)
+            addView(button("×") { onHide() }.apply { contentDescription = "Hide assistant" })
         }
         addView(header)
+        addView(controls)
         addView(promptScroll, LinearLayout.LayoutParams(-1, dp(100)))
         addView(composer)
     }
@@ -99,19 +109,25 @@ class AgentOverlay(
     }
 
     fun render(next: OverlayState) {
+        val modeChanged = state.mode != next.mode
         // A draft answer is scoped to one question; it must not become an answer to a later one.
         if (state.questionId != next.questionId || state.mode != next.mode) input.text.clear()
         state = next
-        if (next.mode == OverlayMode.PROCESSING) expanded = false
+        if (modeChanged && next.mode == OverlayMode.PROCESSING) expanded = false
         title.text = when (next.mode) {
             OverlayMode.IDLE -> "✦  Jarvis"
             OverlayMode.PROCESSING -> "✦  Working…"
             OverlayMode.WAITING_FOR_USER -> "✦  Needs your input"
+            OverlayMode.PAUSING -> "✦  Pausing…"
+            OverlayMode.PAUSED -> "✦  Paused"
         }
         title.contentDescription = "${title.text}. Tap to ${if (expanded) "collapse" else "expand"} assistant"
-        prompt.text = next.question ?: "How can I help?"
+        prompt.text = next.question ?: next.message ?: "How can I help?"
         input.hint = if (next.questionId == null) "What should Jarvis do?" else "Your answer"
         stop.visibility = if (next.mode == OverlayMode.IDLE) View.GONE else View.VISIBLE
+        controls.visibility = if (next.mode == OverlayMode.IDLE) View.GONE else View.VISIBLE
+        pause.text = if (next.mode == OverlayMode.PAUSED) "Continue" else "Pause"
+        pause.isEnabled = next.mode != OverlayMode.PAUSING
         promptScroll.visibility = if (expanded) View.VISIBLE else View.GONE
         composer.visibility = if (expanded && next.acceptsInput) View.VISIBLE else View.GONE
         updateWindow()
@@ -119,6 +135,15 @@ class AgentOverlay(
 
     /** Collapse before the phone resumes acting; a keyboard must never steal the task app's focus. */
     fun collapse() = setExpanded(false)
+
+    fun openComposer() {
+        show()
+        setExpanded(true)
+    }
+
+    fun hideForCapture(hidden: Boolean) {
+        root.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
+    }
 
     fun close() {
         if (!attached) return

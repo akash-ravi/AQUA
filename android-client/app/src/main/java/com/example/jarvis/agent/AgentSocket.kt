@@ -28,6 +28,7 @@ class AgentSocket(
         .build()
     private val incomingCommands = Channel<JSONObject>(Channel.UNLIMITED)
     private val finished = AtomicBoolean(false)
+    private val ready = AtomicBoolean(false)
     private var webSocket: WebSocket? = null
     private var commandWorker: Job? = null
     private var commandCount = 0
@@ -37,16 +38,22 @@ class AgentSocket(
         val startMessage = JSONObject().put("type", "start").put("task", task).put("device", device)
         webSocket = client.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                if (finished.get()) { webSocket.cancel(); return }
                 AgentState.log("connected to $url")
                 webSocket.send(startMessage.toString())
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) = handleMessage(text)
 
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = finish("connection closed")
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (!finished.get()) AgentState.message("Connection closed. Check the task before trying again.")
+                finish("connection closed")
+            }
 
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) =
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                if (!finished.get()) AgentState.message("Connection failed. Check the backend and Wi-Fi before trying again.")
                 finish("connection failed: ${t.message}")
+            }
         })
     }
 
@@ -63,7 +70,18 @@ class AgentSocket(
         finish("stopped")
     }
 
+    fun pause() {
+        if (ready.get() && !finished.get() && webSocket?.send(JSONObject().put("type", "pause").toString()) == true) {
+            AgentState.requestPause()
+        }
+    }
+
+    fun resume() {
+        if (ready.get() && !finished.get()) webSocket?.send(JSONObject().put("type", "resume").toString())
+    }
+
     private fun handleMessage(text: String) {
+        if (finished.get()) return
         val message = try {
             JSONObject(text)
         } catch (e: Exception) {
@@ -73,8 +91,18 @@ class AgentSocket(
         when (message.optString("type")) {
             "command" -> incomingCommands.trySend(message)
             "ask" -> AgentState.ask(Question(message.optString("id"), message.optString("question")))
-            "done" -> closeWith("done: ${message.optString("summary")}")
-            "error" -> closeWith("server error: ${message.optString("message")}")
+            "progress" -> when (message.optString("state")) {
+                "paused" -> AgentState.setPaused(true)
+                "running" -> AgentState.setPaused(false)
+            }
+            "done" -> {
+                AgentState.message(message.optString("summary"))
+                closeWith("done: ${message.optString("summary")}")
+            }
+            "error" -> {
+                AgentState.message(message.optString("message"))
+                closeWith("server error: ${message.optString("message")}")
+            }
             else -> AgentState.log("ignored message of type '${message.optString("type")}'")
         }
     }
@@ -97,6 +125,8 @@ class AgentSocket(
             reply.put("ok", false).put("error", "actionFailed").put("message", e.message)
         }
         webSocket?.send(reply.toString())
+        // Pause is available once the backend loop has reached its first observation.
+        if (name == "readScreen" && reply.optBoolean("ok") && !finished.get()) ready.set(true)
     }
 
     private fun closeWith(message: String) {
@@ -106,6 +136,7 @@ class AgentSocket(
 
     private fun finish(message: String) {
         if (!finished.compareAndSet(false, true)) return
+        ready.set(false)
         AgentState.log(message)
         incomingCommands.close()
         commandWorker?.cancel()

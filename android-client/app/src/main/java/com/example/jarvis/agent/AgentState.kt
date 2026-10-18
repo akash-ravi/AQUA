@@ -10,6 +10,9 @@ data class AgentUiState(
     val running: Boolean = false,
     val log: List<String> = emptyList(),
     val question: Question? = null,
+    val pauseRequested: Boolean = false,
+    val paused: Boolean = false,
+    val message: String? = null,
 )
 
 object AgentState {
@@ -19,7 +22,7 @@ object AgentState {
     val state: StateFlow<AgentUiState> = mutableState
 
     fun begin(task: String) {
-        mutableState.value = AgentUiState(running = true, log = listOf("task: $task"))
+        mutableState.value = AgentUiState(running = true, log = listOf("task: $task"), message = task)
     }
 
     fun log(line: String) = mutableState.update { it.copy(log = (it.log + line).takeLast(MAX_LOG_LINES)) }
@@ -31,5 +34,13 @@ object AgentState {
 
     fun clearQuestion() = mutableState.update { it.copy(question = null) }
 
-    fun end() = mutableState.update { it.copy(running = false, question = null) }
+    fun requestPause() = mutableState.update { it.copy(pauseRequested = true, question = null) }
+
+    fun setPaused(paused: Boolean) = mutableState.update {
+        it.copy(paused = paused, pauseRequested = false, question = if (paused) null else it.question)
+    }
+
+    fun message(text: String) = mutableState.update { it.copy(message = text) }
+
+    fun end() = mutableState.update { it.copy(running = false, question = null, paused = false, pauseRequested = false) }
 }

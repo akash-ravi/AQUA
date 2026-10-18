@@ -13,8 +13,10 @@ import com.example.jarvis.agent.AgentState
 import com.example.jarvis.device.CommandExecutor
 import com.example.jarvis.device.UiActivityClock
 import com.example.jarvis.overlay.AgentOverlay
+import com.example.jarvis.overlay.AuraRing
 import com.example.jarvis.overlay.AssistantInput
 import com.example.jarvis.overlay.OverlayState
+import com.example.jarvis.overlay.OverlayMode
 import com.example.jarvis.overlay.OverlaySubmission
 import com.example.jarvis.overlay.routeInput
 import kotlinx.coroutines.CoroutineScope
@@ -23,6 +25,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import org.json.JSONObject
 
 class PhoneUseService : AccessibilityService() {
@@ -32,17 +37,36 @@ class PhoneUseService : AccessibilityService() {
     private val notification by lazy { TaskNotification(this) }
     private var socket: AgentSocket? = null
     private var overlay: AgentOverlay? = null
+    private var aura: AuraRing? = null
+    private var overlayVisible = false
+    private var captureHidden = false
     private var taskGeneration = 0
 
     private val stopReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) = stopTask()
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == TaskNotification.ACTION_SHOW) showOverlay() else stopTask()
+        }
     }
 
     override fun onServiceConnected() {
         instance = this
-        registerReceiver(stopReceiver, IntentFilter(TaskNotification.ACTION_STOP), RECEIVER_NOT_EXPORTED)
-        overlay = AgentOverlay(this, ::submitOverlayInput, ::stopTask).also { it.show() }
-        scope.launch { AgentState.state.collect { overlay?.render(OverlayState.from(it)) } }
+        val filter = IntentFilter(TaskNotification.ACTION_STOP).apply { addAction(TaskNotification.ACTION_SHOW) }
+        registerReceiver(stopReceiver, filter, RECEIVER_NOT_EXPORTED)
+        overlay = AgentOverlay(this, ::submitOverlayInput, ::stopTask,
+            { socket?.pause() }, { overlay?.collapse(); socket?.resume() }, ::hideOverlay)
+        aura = AuraRing(this)
+        scope.launch {
+            AgentState.state.map { OverlayState.from(it) }.distinctUntilChanged().collect {
+                overlay?.render(it)
+                updateAura()
+                if (it.mode != OverlayMode.IDLE) notification.show(when (it.mode) {
+                    OverlayMode.PAUSED -> "Jarvis is paused"
+                    OverlayMode.PAUSING -> "Jarvis is pausing"
+                    OverlayMode.WAITING_FOR_USER -> "Jarvis needs your input"
+                    else -> "Jarvis is controlling the phone"
+                })
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -50,6 +74,8 @@ class PhoneUseService : AccessibilityService() {
         stopTask()
         overlay?.close()
         overlay = null
+        aura?.close()
+        aura = null
         unregisterReceiver(stopReceiver)
         scope.cancel()
         super.onDestroy()
@@ -64,8 +90,12 @@ class PhoneUseService : AccessibilityService() {
         stopTask()
         AgentState.begin(task)
         notification.show()
+        showOverlay(openComposer = false)
         val generation = ++taskGeneration
-        val agentSocket = AgentSocket(BuildConfig.AGENT_URL, CommandExecutor(this, clock), scope) {
+        val executor = CommandExecutor(this, clock,
+            beforeScreenshot = { setCaptureHidden(true); delay(80) },
+            afterScreenshot = { setCaptureHidden(false) })
+        val agentSocket = AgentSocket(BuildConfig.AGENT_URL, executor, scope) {
             onTaskFinished(generation)
         }
         socket = agentSocket
@@ -78,6 +108,30 @@ class PhoneUseService : AccessibilityService() {
         socket = null
         notification.hide()
         AgentState.end()
+        AgentState.message("Stopped")
+    }
+
+    fun showOverlay(openComposer: Boolean = true) {
+        overlayVisible = true
+        if (openComposer) overlay?.openComposer() else overlay?.show()
+        overlay?.hideForCapture(captureHidden)
+        updateAura()
+    }
+
+    fun hideOverlay() {
+        overlayVisible = false
+        overlay?.close()
+        aura?.close()
+    }
+
+    private fun setCaptureHidden(hidden: Boolean) {
+        captureHidden = hidden
+        overlay?.hideForCapture(hidden)
+        updateAura()
+    }
+
+    private fun updateAura() {
+        aura?.render(OverlayState.from(AgentState.state.value).mode, overlayVisible && !captureHidden)
     }
 
     fun answerQuestion(questionId: String, text: String) {
