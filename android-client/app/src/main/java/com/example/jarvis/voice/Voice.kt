@@ -8,7 +8,8 @@ import android.os.Looper
 import kotlin.concurrent.thread
 
 /**
- * Open-source, on-device voice: Silero VAD + Moonshine in, Kokoro out (see [SpeechModels]).
+ * On-device voice: Silero VAD + Moonshine in (see [SpeechModels]); the phone's own text-to-speech
+ * out, with Kokoro as the fallback when no system engine is usable.
  * Public calls and callbacks are on the main thread; audio and inference run on workers.
  */
 class Voice(
@@ -20,6 +21,7 @@ class Voice(
     private val models = SpeechModels(context)
     private val listener = Listener(models)
     private val speaker = Speaker(models)
+    private val system = SystemSpeaker(context)
     private var utterance: Any? = null
 
     fun listen(): Boolean {
@@ -41,13 +43,12 @@ class Voice(
         if (listener.stop()) onListening(false)
         val token = Any()
         utterance = token
-        speaker.speak(text) {
-            handler.post {
-                if (utterance !== token) return@post
-                utterance = null
-                then()
-            }
+        fun finish() = handler.post {
+            if (utterance !== token) return@post
+            utterance = null
+            then()
         }
+        if (system.speak(text) { completed -> if (completed) finish() }) speaker.stop() else speaker.speak(text) { finish() }
     }
 
     /** Status chatter: skipped while something is already being said, so updates never pile up. */
@@ -56,6 +57,7 @@ class Voice(
     }
 
     fun cancel() {
+        system.stop()
         speaker.stop()
         utterance = null
         if (listener.stop()) onListening(false)
@@ -64,6 +66,7 @@ class Voice(
     fun close() {
         cancel()
         listener.close()
+        system.close()
         speaker.close()
         // Native models are freed only after the workers stop touching them.
         thread(name = "jarvis-speech-close") {
@@ -74,5 +77,5 @@ class Voice(
     }
 
     /** Current mic or speech loudness, 0..1, for the orb and edge glow. Safe from any thread. */
-    fun level(): Float = maxOf(listener.level, speaker.level())
+    fun level(): Float = maxOf(listener.level, speaker.level(), system.level())
 }

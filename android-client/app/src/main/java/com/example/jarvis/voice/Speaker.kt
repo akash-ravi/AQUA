@@ -19,16 +19,19 @@ internal class Speaker(private val models: SpeechModels) {
     private val envelope = ArrayList<Float>()
     @Volatile private var track: AudioTrack? = null
 
-    /** [onDone] runs on the worker thread only if this utterance was not interrupted. */
+    /**
+     * [onDone] runs on the worker thread unless this utterance was interrupted, including when
+     * the models are missing, so callers never wait forever on speech that cannot play.
+     */
     fun speak(text: String, onDone: () -> Unit) {
         val id = generation.incrementAndGet()
         worker.execute {
             try {
-                if (play(id, text) && id == generation.get()) onDone()
+                play(id, text)
             } catch (error: RuntimeException) {
                 Log.e(TAG, "Speech failed", error)
-                if (id == generation.get()) onDone()
             }
+            if (id == generation.get()) onDone()
         }
     }
 
@@ -50,9 +53,10 @@ internal class Speaker(private val models: SpeechModels) {
         return synchronized(envelope) { envelope.getOrNull(head / WINDOW) ?: 0f }
     }
 
-    private fun play(id: Int, text: String): Boolean {
-        val tts = models.await()?.tts ?: return false
-        if (id != generation.get()) return false
+    private fun play(id: Int, text: String) {
+        val tts = models.await()?.tts
+        if (tts == null) { Log.w(TAG, "Kokoro is not loaded; skipping speech"); return }
+        if (id != generation.get()) return
         val sampleRate = tts.sampleRate()
         val output = AudioTrack.Builder()
             .setAudioAttributes(AudioAttributes.Builder()
@@ -87,7 +91,6 @@ internal class Speaker(private val models: SpeechModels) {
             val deadline = SystemClock.uptimeMillis() + written * 1000L / sampleRate + DRAIN_GRACE_MS
             while (id == generation.get() && output.playbackHeadPosition < written &&
                 SystemClock.uptimeMillis() < deadline) Thread.sleep(POLL_MS)
-            return id == generation.get()
         } finally {
             track = null
             runCatching { output.stop() }
