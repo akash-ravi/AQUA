@@ -139,8 +139,16 @@ class Stop(Message):
     type: Literal["stop"] = "stop"
 
 
-PhoneMessage = Annotated[Union[Start, WireResult, Answer, Stop], Field(discriminator="type")]
-PHONE_TYPES = {"start", "result", "answer", "stop"}
+class Pause(Message):
+    type: Literal["pause"] = "pause"
+
+
+class Resume(Message):
+    type: Literal["resume"] = "resume"
+
+
+PhoneMessage = Annotated[Union[Start, WireResult, Answer, Stop, Pause, Resume], Field(discriminator="type")]
+PHONE_TYPES = {"start", "result", "answer", "stop", "pause", "resume"}
 
 
 # ---- backend -> phone ----
