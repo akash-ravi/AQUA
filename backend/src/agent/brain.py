@@ -8,7 +8,7 @@ from src.agent import screen as screens
 from src.ai.model import AIError, AIUnavailable, InvalidReply, RateLimited
 from src.phone.messages import Command, Done, SecretTarget
 from src.phone.link import Interrupted, PhoneDisconnected, new_command
-from src.agent.screenshots import annotate_screenshot, needs_screenshot
+from src.agent.screenshots import annotate_screenshot, is_blind, needs_screenshot, picture_to_screen
 from src.agent.prompt import SYSTEM_PROMPT, build_step_message, describe_error, retry_note, status_line
 from src.agent.task import Notebook, Step, Task
 from src.agent.recovery import Attempt, yes_no
@@ -16,9 +16,10 @@ from src.agent.recovery import Attempt, yes_no
 log = logging.getLogger("jarvis.brain")
 
 PHONE_TOOLS = {"tap", "type_text", "scroll", "go_back", "go_home", "open_app"}
+BLIND_TOOLS = {"tap_point", "type_focused"}
 POST_COMMIT_TOOLS = {"scroll", "wait", "finish", "give_up", "look"}
-STATUS_TOOLS = PHONE_TOOLS | {"wait", "look"}
-MAX_SCREENSHOTS = 8
+STATUS_TOOLS = PHONE_TOOLS | BLIND_TOOLS | {"wait", "look"}
+MAX_SCREENSHOTS = 25
 MAX_STEPS = 50
 EXTRA_STEPS_AFTER_COMMIT = 3
 MAX_MODEL_CALLS = 80
@@ -83,6 +84,7 @@ class Brain:
         self.started = time.monotonic()
         self.timing = Timing()
         self.screenshot: tuple[str, bytes] | None = None
+        self.picture_size: tuple[int, int] = (0, 0)
         self.screenshotted_screens: set[str] = set()
         self.screenshots_taken = 0
         self.screenshot_requested = False
@@ -219,6 +221,11 @@ class Brain:
             return "only checking is left: scroll, wait, finish or give_up"
         if tool == "reply" and self.task.steps:
             return "reply is only for requests that aren't phone tasks; use finish or give_up"
+        if tool == "tap_point":
+            if not (self.screenshot and self.screenshot[0] == view.signature):
+                return "tap_point needs a picture of this screen; use look first"
+            if picture_to_screen(args["x"], args["y"], self.picture_size, view.screen) is None:
+                return f"that spot is outside the picture, which is {self.picture_size[0]}x{self.picture_size[1]} pixels"
         checked = checks.check_decision(tool, args, view, self.link.apps)
         if isinstance(checked, str):
             return checked
@@ -234,6 +241,8 @@ class Brain:
 
         if tool in PHONE_TOOLS:
             await self.handle_phone_action(tool, args, why)
+        elif tool in BLIND_TOOLS:
+            await self.handle_blind_action(tool, args, why)
         elif tool == "wait":
             await self.handle_wait(args, why)
         elif tool == "look":
@@ -312,6 +321,24 @@ class Brain:
             self.task.typed_texts.append(args.get("text", ""))
         self.note_attempt(step, before)
         self.record_step_outcome(step, before)
+
+    async def handle_blind_action(self, tool: str, args: dict, why: str) -> None:
+        """Acts by picture where the screen text shows nothing. The text can't show progress, so a fresh picture is taken."""
+        before = self.view
+        step = self.start_step(tool, None, (args.get("what") or "typed text")[:60], why)
+        if tool == "tap_point":
+            x, y = picture_to_screen(args["x"], args["y"], self.picture_size, before.screen)
+            command = new_command("tap_at", x=x, y=y)
+        else:
+            command = new_command("type_focused", text=args["text"], submit=bool(args.get("submit")))
+        result = await self.send(command, step)
+        if result is None:
+            return
+        if tool == "type_focused" and result.status == "ok":
+            self.task.typed_texts.append(args["text"])
+        self.screenshot_requested = True
+        step.change = "done; check the new picture" if result.status == "ok" else step.error or step.status
+        log.info("step %d: %s %s → %s", step.n, step.tool, step.label, step.change)
 
     async def allow_attempt(self, tool: str, args: dict) -> bool:
         key = safety.action_key(tool, args, self.view)
@@ -424,6 +451,9 @@ class Brain:
             await self.read_screen()
         if self.view.by_index:
             return
+        if self.screenshots_taken < MAX_SCREENSHOTS and not self.secret_screens:
+            self.warnings.append("The screen text shows nothing here. Use the picture with tap_point and type_focused.")
+            return
         if self.view.signature in self.unreadable_screens:
             self.warnings.append("Nothing on this screen can be read or tapped. Use go_back, go_home, open_app or give_up.")
             return
@@ -432,10 +462,12 @@ class Brain:
                     f"I couldn't read the screen. {self.last_tried()}".strip())
 
     async def capture_screenshot_if_needed(self) -> None:
-        if self.view.signature in self.screenshotted_screens and not self.screenshot_requested:
+        # A blind screen's text never changes, so its old picture can't be trusted after any step.
+        fresh = self.screenshot_requested or is_blind(self.view)
+        if self.view.signature in self.screenshotted_screens and not fresh:
             return
-        if self.screenshot_requested or needs_screenshot(self.view):
-            force = self.screenshot_requested
+        if fresh or needs_screenshot(self.view):
+            force = fresh
             self.screenshot_requested = False
             await self.capture_screenshot("Looking at the screen", force=force)
 
@@ -477,6 +509,7 @@ class Brain:
         if isinstance(marked, str):
             self.warnings.append(f"The picture was unusable ({marked}); use the screen text.")
             return False
+        marked, self.picture_size = marked
         self.screenshot = (observation.signature, marked)
         self.screenshotted_screens.add(observation.signature)
         self.notebook.write("screenshot", signature=self.view.signature, bytes=len(marked), why=why)
@@ -785,7 +818,9 @@ class Brain:
 
     async def read_screen(self) -> None:
         await self.wait_if_paused()  # a read during a pause would be stale by the time we resume
-        for _ in range(2):
+        for attempt in range(3):
+            if attempt:
+                await self.sleep_interruptibly(attempt)  # dialogs and app switches briefly leave no readable window
             result = await self.send(new_command("read_screen"), None)
             if result is not None and result.screen is not None:
                 return
@@ -956,7 +991,7 @@ class Brain:
             completed_irreversible=self.task.completed_irreversible, uncertain_actions=self.task.uncertain_actions, notes=self.task.notes,
             apps_line=apps_line, screens_seen=self.task.screens_seen, steps=steps[-8:],
             total_steps=len(steps), step_limit=self.step_limit, warnings=self.drain_warnings(),
-            view_text=view.text, image_attached=image_attached)
+            view_text=view.text, image_attached=image_attached, picture_size=self.picture_size)
 
     def drain_warnings(self) -> list[str]:
         warnings = list(dict.fromkeys(self.warnings))[-3:]

@@ -6,13 +6,13 @@ from PIL import Image as PilImage
 from PIL import ImageDraw, ImageFont
 
 PilImage.MAX_IMAGE_PIXELS = 20_000_000
-MAX_SIDE = 1600
+MAX_SIDE = 1456  # keeps phone pictures under the API's resize limits, so tap_point pixels stay exact
 BOX = (233, 30, 99)
 LABEL_TEXT = (255, 255, 255)
 
 
-def annotate_screenshot(image, view) -> bytes | str:
-    """The phone's screenshot with every numbered item boxed and labelled, as JPEG bytes (or a plain problem)."""
+def annotate_screenshot(image, view) -> tuple[bytes, tuple[int, int]] | str:
+    """The phone's screenshot with every numbered item boxed and labelled, as JPEG bytes and size (or a plain problem)."""
     try:
         raw = base64.b64decode(image.data, validate=True)
     except (binascii.Error, ValueError):
@@ -44,7 +44,20 @@ def annotate_screenshot(image, view) -> bytes | str:
         picture = picture.resize((round(picture.width * ratio), round(picture.height * ratio)))
     out = io.BytesIO()
     picture.save(out, format="JPEG", quality=80)
-    return out.getvalue()
+    return out.getvalue(), picture.size
+
+
+def is_blind(view) -> bool:
+    """True when the screen text shows almost nothing (apps like Lyft hide their UI), so only a picture helps."""
+    return sum(1 for line in view.lines if line.label and not line.label.startswith("(no label")) <= 1
+
+
+def picture_to_screen(x: int, y: int, picture_size: tuple[int, int], screen) -> tuple[int, int] | None:
+    width, height = picture_size
+    if not (0 <= x < width and 0 <= y < height):
+        return None
+    # The picture keeps the screen's aspect ratio; reported screen height can leave out the nav bar.
+    return x * screen.width // width, y * screen.width // width
 
 
 def needs_screenshot(view) -> bool:

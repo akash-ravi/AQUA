@@ -3,6 +3,7 @@ package com.example.jarvis.device
 import android.accessibilityservice.AccessibilityService
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -23,7 +24,7 @@ class ScreenReader(private val service: AccessibilityService, private val secret
             .containsMatchIn(listOf(node.viewIdResourceName, node.hintText, node.contentDescription).joinToString(" ")))
 
     fun hasSensitiveFields(): Boolean {
-        val root = service.rootInActiveWindow ?: return true
+        val root = currentRoot() ?: return true
         fun contains(node: AccessibilityNodeInfo): Boolean = isSensitive(node) ||
             (0 until node.childCount).any { node.getChild(it)?.let(::contains) == true }
         return contains(root)
@@ -31,10 +32,16 @@ class ScreenReader(private val service: AccessibilityService, private val secret
 
     fun contextLabels(): String = snapshot?.nodes.orEmpty().filterNot(::isSensitive).joinToString(" ") { it.label() }
 
-    fun packageName(): String = service.rootInActiveWindow?.packageName?.toString().orEmpty()
+    fun packageName(): String = currentRoot()?.packageName?.toString().orEmpty()
+
+    // System dialogs such as permission prompts can leave no active window; read the top visible one instead.
+    private fun currentRoot(): AccessibilityNodeInfo? = service.rootInActiveWindow ?: service.windows
+        .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION || it.type == AccessibilityWindowInfo.TYPE_SYSTEM }
+        .sortedByDescending { it.layer }
+        .firstNotNullOfOrNull { window -> window.root?.takeIf { it.packageName != service.packageName } }
 
     fun read(): JSONObject {
-        val root = service.rootInActiveWindow ?: throw CommandException("actionFailed", "no active window")
+        val root = currentRoot() ?: throw CommandException("actionFailed", "no active window")
         val nodes = mutableListOf<AccessibilityNodeInfo>().also { collectUsefulNodes(root, it) }
         val current = Snapshot("s${++snapshotCounter}", nodes)
         snapshot = current

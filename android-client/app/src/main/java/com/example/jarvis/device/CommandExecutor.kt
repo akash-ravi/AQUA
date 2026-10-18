@@ -3,11 +3,14 @@ package com.example.jarvis.device
 import android.accessibilityservice.AccessibilityService
 import android.graphics.Bitmap
 import android.graphics.Rect
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.text.InputType
 import android.util.Base64
 import android.view.Display
+import android.view.KeyEvent
+import android.view.inputmethod.EditorInfo
 import android.view.accessibility.AccessibilityNodeInfo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -63,6 +66,7 @@ class CommandExecutor(
         "longClick" -> longClick(args)
         "tap" -> tap(args)
         "setText" -> setText(args)
+        "typeFocused" -> typeFocused(args.optString("text"), args.optBoolean("submit", false))
         "scroll" -> scroll(args)
         "swipe" -> swipe(args)
         "back" -> globalAction(AccessibilityService.GLOBAL_ACTION_BACK)
@@ -132,6 +136,52 @@ class CommandExecutor(
             return JSONObject().put("submitted", true)
         }
         return JSONObject()
+    }
+
+    private fun typeFocused(text: String, submit: Boolean): JSONObject {
+        val field = service.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable }
+            ?: return typeWithInputMethod(text, submit)
+        if (screenReader.isSensitive(field)) throw CommandException("badCommand", "This field needs user-supplied secret entry")
+        val value = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
+        if (!field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, value)) return typeWithInputMethod(text, submit)
+        if (submit && !(field.refresh() && field.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id))) {
+            throw CommandException("cantSubmit", "text entered, but the field could not submit")
+        }
+        return JSONObject()
+    }
+
+    // Apps that hide their views (Lyft) still take text through the accessibility input method.
+    private fun typeWithInputMethod(text: String, submit: Boolean): JSONObject {
+        val inputMethod = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) service.inputMethod else null
+        val connection = inputMethod?.currentInputConnection
+            ?: throw CommandException("actionFailed", "No text box has the cursor; tap the box first")
+        val editor = inputMethod.currentInputEditorInfo
+        if (editor != null && isPasswordInput(editor.inputType)) {
+            throw CommandException("badCommand", "This field needs user-supplied secret entry")
+        }
+        connection.performContextMenuAction(android.R.id.selectAll)
+        connection.commitText(text, 1, null)
+        if (submit) {
+            val action = (editor?.imeOptions ?: 0) and EditorInfo.IME_MASK_ACTION
+            if (action > EditorInfo.IME_ACTION_NONE) {
+                connection.performEditorAction(action)
+            } else {
+                connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+                connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+            }
+        }
+        return JSONObject()
+    }
+
+    private fun isPasswordInput(inputType: Int): Boolean {
+        val variation = inputType and InputType.TYPE_MASK_VARIATION
+        return when (inputType and InputType.TYPE_MASK_CLASS) {
+            InputType.TYPE_CLASS_TEXT -> variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+                variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+                variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
+            InputType.TYPE_CLASS_NUMBER -> variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            else -> false
+        }
     }
 
     private fun scroll(args: JSONObject): JSONObject {

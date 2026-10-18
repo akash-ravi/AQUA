@@ -21,6 +21,19 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
+private val DANGLING_WORDS = setOf(
+    "to", "and", "or", "but", "the", "a", "an", "of", "for", "with", "in", "on", "at", "from", "my", "so",
+    "uh", "um", "like", "then", "is", "want", "go",
+)
+
+/** A pause mid-sentence ("I want to go to...", "I just want-") is not the end of the request. */
+internal fun soundsUnfinished(transcript: String): Boolean {
+    val text = transcript.trim()
+    if (text.endsWith("...") || text.endsWith("…") || text.endsWith("-") || text.endsWith("—") || text.endsWith(",")) return true
+    if (text.lastOrNull()?.isLetter() != true) return false
+    return text.substringAfterLast(' ').lowercase() in DANGLING_WORDS
+}
+
 /**
  * One utterance per [start]: records 16 kHz mono and streams it to ElevenLabs Scribe v2 Realtime, whose VAD
  * commits the transcript once the user stops talking. Recording starts at once; audio captured while the
@@ -37,9 +50,13 @@ internal class Listener(private val tokens: VoiceTokens, private val client: OkH
         @Volatile var socket: WebSocket? = null
         @Volatile var open = false
         val heardSpeech = AtomicBoolean(false)
+        @Volatile var unfinishedText = ""
+        @Volatile var lastSpeechMs = 0L
         private val finished = AtomicBoolean(false)
 
         /** First call wins: the transcript, or null for silence, failure or cancel. Ends the recording. */
+        fun finishWithWhatWasSaid() = finish(unfinishedText.ifEmpty { null })
+
         fun finish(text: String?) {
             if (!finished.compareAndSet(false, true)) return
             runCatching { record.stop() } // unblocks the worker's read
@@ -61,13 +78,23 @@ internal class Listener(private val tokens: VoiceTokens, private val client: OkH
                 val transcript = message.optString("text").trim()
                 when {
                     type == "session_started" -> open = true
-                    type == "partial_transcript" ->
-                        if (transcript.isNotEmpty() && heardSpeech.compareAndSet(false, true)) onSpeech()
+                    type == "partial_transcript" -> if (transcript.isNotEmpty()) {
+                        lastSpeechMs = SystemClock.uptimeMillis()
+                        if (heardSpeech.compareAndSet(false, true)) onSpeech()
+                    }
                     // VAD can commit a cough or noise as empty text; keep listening for real words.
-                    type == "committed_transcript" -> if (transcript.isNotEmpty()) finish(transcript)
+                    type == "committed_transcript" -> if (transcript.isNotEmpty()) {
+                        val said = "$unfinishedText $transcript".trim()
+                        if (soundsUnfinished(said)) {
+                            unfinishedText = said
+                            lastSpeechMs = SystemClock.uptimeMillis()
+                        } else {
+                            finish(said)
+                        }
+                    }
                     message.has("error") -> {
                         Log.w(TAG, "Speech-to-text $type: ${message.optString("error")}")
-                        finish(null)
+                        finishWithWhatWasSaid()
                     }
                 }
             }
@@ -77,7 +104,7 @@ internal class Listener(private val tokens: VoiceTokens, private val client: OkH
                 finish(null)
             }
 
-            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) = finish(null)
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) = finishWithWhatWasSaid()
         }
     }
 
@@ -150,7 +177,7 @@ internal class Listener(private val tokens: VoiceTokens, private val client: OkH
         } catch (error: RuntimeException) {
             Log.e(TAG, "Recognition failed", error)
         } finally {
-            session.finish(null)
+            session.finishWithWhatWasSaid()
             session.echoCanceller?.release()
             session.record.release()
             level = 0f
@@ -182,6 +209,7 @@ internal class Listener(private val tokens: VoiceTokens, private val client: OkH
             }
             if (session.heardSpeech.get()) {
                 if (speechStarted == 0L) speechStarted = now
+                if (session.unfinishedText.isNotEmpty() && now - session.lastSpeechMs > UNFINISHED_PAUSE_MS) return
                 // A long utterance is cut at the limit; the transcript of what was said still arrives.
                 if (!committed && now - speechStarted > MAX_UTTERANCE_MS && socket != null) {
                     socket.send(chunk(ByteArray(0), commit = true))
@@ -226,6 +254,7 @@ internal class Listener(private val tokens: VoiceTokens, private val client: OkH
         const val END_OF_SPEECH_SECONDS = 1.0f
         const val MAX_UTTERANCE_MS = 20_000L
         const val NO_SPEECH_TIMEOUT_MS = 8_000L
+        const val UNFINISHED_PAUSE_MS = 4_000L
         const val COMMIT_WAIT_MS = 3_000L
         const val CONNECT_TIMEOUT_MS = 5_000L
         const val NORMAL_CLOSE = 1000

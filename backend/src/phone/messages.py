@@ -15,7 +15,7 @@ MAX_IMAGE_CHARS = 11_000_000
 
 Status = Literal["ok", "failed", "rejected", "unknown"]
 Direction = Literal["down", "up", "left", "right"]
-Action = Literal["read_screen", "tap", "type_text", "scroll", "go_back", "go_home", "open_app", "screenshot", "list_apps", "tap_at"]
+Action = Literal["read_screen", "tap", "type_text", "scroll", "go_back", "go_home", "open_app", "screenshot", "list_apps", "tap_at", "type_focused"]
 
 
 class Message(BaseModel):

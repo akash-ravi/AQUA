@@ -12,6 +12,8 @@ FREE = re.compile(r"\b(free|no charge|no cost|zero cost)\b", re.IGNORECASE)
 NOT_PAYMENT = re.compile(r"\bbuy \d+\b.*\bget\b|\b(google|apple|samsung) pay\b|\bpay with\b|\bpaypal\b", re.IGNORECASE)
 DUPLICATE_EFFECT = re.compile(r"\b(send|delete|call|dial|post|publish|submit|book|reserve|subscribe|transfer|donate|place order|pay|buy|purchase|request ride)\b", re.IGNORECASE)
 MONEY = re.compile(r"((?:US)?\$|€|£|₹|\b(?:USD|EUR|GBP|INR|CAD|AUD)\s*)\s*(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{2}))?", re.IGNORECASE)
+BLIND_EFFECT = re.compile(r"\b(request|confirm|book|reserve|order|pay|buy|purchase|check ?out|send|submit|subscribe|donate|"
+                          r"transfer|call|dial|post|publish|delete|remove|cancel|place|select|choose|accept|agree|sign)\b", re.IGNORECASE)
 SLIDE_GESTURE = re.compile(r"\b(slide|swipe) to\b", re.IGNORECASE)
 SECRET_FIELD = re.compile(r"otp|one.?time|\bcode\b|cvv|cvc|card number|password|passcode|\bpin\b", re.IGNORECASE)
 SECRET_QUESTION = re.compile(r"code|otp|password|passcode|\bpin\b", re.IGNORECASE)
@@ -129,6 +131,12 @@ def check_action(tool: str, args: dict, view) -> str | None:
             return "Don't generate or type a secret. Use request_secret for this field; the user can speak it or enter it manually."
         if args.get("submit") and not looks_like_search(view, target):
             return "Type without submit, then tap the visible Send button. Use confirm_and_tap only if sending costs money."
+    # Picture taps skip the screen-text money checks, so anything with an effect is left to the user.
+    if tool == "tap_point" and (BLIND_EFFECT.search(args["what"]) or PAYMENT_ACTION.search(args["what"])
+                                or SLIDE_GESTURE.search(args["what"]) or find_amounts(args["what"])):
+        return "That may cost money or can't be undone, and it has no number. Ask the user to tap it themselves with ask_user."
+    if tool == "type_focused" and is_secret(args["text"]):
+        return "Don't type a secret. Ask the user to enter it on the phone."
     if tool == "scroll" and target is not None and target in view.by_index and SLIDE_GESTURE.search(view.by_index[target].label):
         return "Ask the user to do that slide themselves with ask_user."
     return None
