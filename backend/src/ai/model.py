@@ -18,6 +18,9 @@ class Decision:
     text: str = ""
     model: str = ""
     ms: int = 0
+    input_tokens: int = 0
+    cached_tokens: int = 0
+    output_tokens: int = 0
 
 
 class AIError(Exception):
@@ -79,6 +82,11 @@ class AI:
             raise _to_ai_error(error)
         ms = int((time.monotonic() - started) * 1000)
 
+        usage = response.usage
+        cached = usage.cache_read_input_tokens or 0
+        input_tokens = usage.input_tokens + (usage.cache_creation_input_tokens or 0) + cached
+        log.debug("%s answered in %d ms: %d input tokens (%d cached), %d output tokens%s", response.model, ms,
+                  input_tokens, cached, usage.output_tokens, ", with a picture" if image else "")
         if response.model != self.model:
             log.info("Answered by fallback model %s", response.model)
         if response.stop_reason == "refusal":
@@ -88,7 +96,8 @@ class AI:
         if call is None:
             raise InvalidReply("the reply was cut off" if response.stop_reason == "max_tokens" else "no action in the reply")
         tool, args = normalize_tool_call(call.name, call.input)
-        return Decision(tool=tool, args=args, text=text, model=response.model, ms=ms)
+        return Decision(tool=tool, args=args, text=text, model=response.model, ms=ms, input_tokens=input_tokens,
+                        cached_tokens=cached, output_tokens=usage.output_tokens)
 
 
 def normalize_tool_call(tool: str, args: dict) -> tuple[str, dict]:

@@ -20,6 +20,17 @@ Settings use a `JARVIS_` prefix because Claude Code exports its own `CLAUDE_*` v
 
 ```bash
 .venv/bin/jarvis              # same as: .venv/bin/python -m src.app
+.venv/bin/jarvis --debug      # also log each command, AI call (with tokens) and turn with its latency
+```
+
+Every task ends with a timing line (total, AI, phone, time waiting on you), also written to the task's notebook as a
+`timing` event. Each `step_result` in the notebook carries the command's round-trip `ms`.
+
+To see every run's journey and latency in the browser:
+
+```bash
+.venv/bin/python -m pip install -e '.[dashboard]'
+.venv/bin/streamlit run dashboard.py   # http://localhost:8501, refreshes live while a task runs
 ```
 
 Addresses to put in the phone app (get the Mac's Wi-Fi IP with `ipconfig getifaddr en0`):
