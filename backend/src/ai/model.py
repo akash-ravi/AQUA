@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import anthropic
 
 from src.config import Settings
-from src.ai.tools import TOOLS, claude_tools
+from src.ai.tools import TOOLS, tool_schemas
 
 log = logging.getLogger("jarvis.llm")
 
@@ -38,19 +38,19 @@ class AIUnavailable(AIError):
     pass
 
 
-class BadReply(AIError):
+class InvalidReply(AIError):
     def __init__(self, reason: str):
         super().__init__(reason)
         self.reason = reason
 
 
-class ClaudeAI:
+class AI:
     def __init__(self, settings: Settings):
         key = settings.anthropic_api_key
         self.model = settings.model
         self.effort = settings.effort
-        self.name = f"Claude {self.model}"
-        self.tools = claude_tools(TOOLS)
+        self.name = self.model
+        self.tools = tool_schemas()
         self.client = anthropic.AsyncAnthropic(api_key=key.get_secret_value() if key else None, max_retries=0,
                                                timeout=120)
 
@@ -76,26 +76,26 @@ class ClaudeAI:
                 fallbacks="default",
             )
         except anthropic.APIError as error:
-            raise _plain_error(error)
+            raise _to_ai_error(error)
         ms = int((time.monotonic() - started) * 1000)
 
         if response.model != self.model:
-            log.info("Claude answered with %s (fallback)", response.model)
+            log.info("Answered by fallback model %s", response.model)
         if response.stop_reason == "refusal":
-            raise BadReply("the model declined this request")
+            raise InvalidReply("the model declined this request")
         text = "".join(block.text for block in response.content if block.type == "text")
         call = next((block for block in response.content if block.type == "tool_use"), None)
         if call is None:
-            raise BadReply("the reply was cut off" if response.stop_reason == "max_tokens" else "no action in the reply")
-        tool, args = clean(call.name, call.input)
+            raise InvalidReply("the reply was cut off" if response.stop_reason == "max_tokens" else "no action in the reply")
+        tool, args = normalize_tool_call(call.name, call.input)
         return Decision(tool=tool, args=args, text=text, model=response.model, ms=ms)
 
 
-def clean(tool: str, args: dict) -> tuple[str, dict]:
+def normalize_tool_call(tool: str, args: dict) -> tuple[str, dict]:
     """Strict tool use guarantees names and types; this drops empty values and fills in a missing "why"."""
     spec = next((t for t in TOOLS if t.name == tool), None)
     if spec is None:
-        raise BadReply(f"unknown action '{tool}'")
+        raise InvalidReply(f"unknown action '{tool}'")
     cleaned: dict = {}
     for param in spec.params:
         value = args.get(param.name)
@@ -105,17 +105,17 @@ def clean(tool: str, args: dict) -> tuple[str, dict]:
             value = [item.strip() for item in value if item.strip()]
         if value is None or value == "" or value == []:
             if param.required and param.name != "why":
-                raise BadReply(f"{tool} needs {param.name}")
+                raise InvalidReply(f"{tool} needs {param.name}")
             continue
         cleaned[param.name] = value
     if tool == "wait":
         cleaned["seconds"] = min(10, max(1, cleaned.get("seconds", 3)))
     if any(p.name == "why" for p in spec.params) and "why" not in cleaned:
-        cleaned["why"] = _made_up_why(tool, cleaned)
+        cleaned["why"] = _default_why(tool, cleaned)
     return tool, cleaned
 
 
-def _made_up_why(tool: str, args: dict) -> str:
+def _default_why(tool: str, args: dict) -> str:
     label = args.get("target_text") or (f"[{args['target']}]" if "target" in args else "")
     return {
         "tap": f"Tapping '{label}'",
@@ -130,26 +130,26 @@ def _made_up_why(tool: str, args: dict) -> str:
     }.get(tool, tool)
 
 
-def _plain_error(error: anthropic.APIError) -> AIError:
+def _to_ai_error(error: anthropic.APIError) -> AIError:
     if isinstance(error, (anthropic.AuthenticationError, anthropic.PermissionDeniedError)):
-        return AIError("The Claude key was refused. Check ANTHROPIC_API_KEY.")
+        return AIError("The AI key was refused. Check ANTHROPIC_API_KEY.")
     if isinstance(error, anthropic.NotFoundError):
-        return AIError("Claude has no such model. Check CLAUDE_MODEL.")
+        return AIError("No such model. Check JARVIS_MODEL.")
     if isinstance(error, anthropic.RateLimitError):
-        return RateLimited("Claude is busy (rate limited).", _retry_after(error))
+        return RateLimited("The AI is busy (rate limited).", _retry_after(error))
     if isinstance(error, anthropic.BadRequestError):
         if "credit balance" in error.message.lower():
-            return AIError("The Claude account is out of credits.")
-        return AIError(f"Claude refused the request: {error.message[:300]}")
+            return AIError("The AI account is out of credits.")
+        return AIError(f"The AI refused the request: {error.message[:300]}")
     if isinstance(error, anthropic.APIStatusError):
         if error.status_code >= 500:
-            return AIUnavailable(f"Claude is having trouble (HTTP {error.status_code}).")
-        return AIError(f"Claude refused the request: {error.message[:300]}")
+            return AIUnavailable(f"The AI is having trouble (HTTP {error.status_code}).")
+        return AIError(f"The AI refused the request: {error.message[:300]}")
     if isinstance(error, anthropic.APITimeoutError):
-        return AIUnavailable("Claude did not answer in time.")
+        return AIUnavailable("The AI did not answer in time.")
     if isinstance(error, anthropic.APIConnectionError):
-        return AIUnavailable("Could not reach Claude.")
-    return AIUnavailable(f"Claude failed: {error.message[:200]}")
+        return AIUnavailable("Could not reach the AI.")
+    return AIUnavailable(f"The AI failed: {error.message[:200]}")
 
 
 def _retry_after(error: anthropic.APIStatusError) -> float | None:

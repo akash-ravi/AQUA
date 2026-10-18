@@ -6,7 +6,7 @@ from src.agent import screen as screens
 TARGETED = {"tap", "type_text", "confirm_and_tap"}
 
 
-def check_decision(tool: str, args: dict, view, apps: dict[str, str], dead_ends: set[tuple]) -> tuple[dict, str] | str:
+def check_decision(tool: str, args: dict, view, apps: dict[str, str], no_effect_actions: set[tuple]) -> tuple[dict, str] | str:
     """Returns (possibly corrected args, a note for the log), or a plain warning for the AI."""
     args = dict(args)
     note = ""
@@ -38,7 +38,7 @@ def check_decision(tool: str, args: dict, view, apps: dict[str, str], dead_ends:
                 return f"[{node.index}] is not a text box"
 
     if tool == "scroll" and args.get("target") is not None:
-        args["target"] = _scrollable(view, args["target"])
+        args["target"] = _scrollable_ancestor(view, args["target"])
 
     if tool == "open_app":
         found = find_app(args.get("name", ""), apps)
@@ -53,26 +53,26 @@ def check_decision(tool: str, args: dict, view, apps: dict[str, str], dead_ends:
 
     if tool in TARGETED | {"scroll"} and args.get("target") is not None:
         label = view.by_index[args["target"]].label if args["target"] in view.by_index else ""
-        if (tool, label, view.signature) in dead_ends:
+        if (tool, label, view.signature) in no_effect_actions:
             return "already tried; nothing happened. Try something different"
-    elif (tool, "", view.signature) in dead_ends and tool in {"go_back", "scroll"}:
+    elif (tool, "", view.signature) in no_effect_actions and tool in {"go_back", "scroll"}:
         return "already tried; nothing happened. Try something different"
     return args, note
 
 
 def find_app(name: str, apps: dict[str, str]) -> str:
     """Returns a package name, or a plain warning when no single app matches."""
-    def simple(text: str) -> str:
+    def normalize_name(text: str) -> str:
         return re.sub(r"[^a-z0-9]", "", text.lower())
 
-    wanted = simple(name)
+    wanted = normalize_name(name)
     if not wanted:
         return "open_app needs the app's name"
-    by_label = {simple(label): package for package, label in apps.items()}
+    by_label = {normalize_name(label): package for package, label in apps.items()}
     if wanted in by_label:
         return by_label[wanted]
-    if wanted in {simple(package) for package in apps}:
-        return next(package for package in apps if simple(package) == wanted)
+    if wanted in {normalize_name(package) for package in apps}:
+        return next(package for package in apps if normalize_name(package) == wanted)
     partial = [package for key, package in by_label.items() if key.startswith(wanted) or wanted in key]
     if len(partial) == 1:
         return partial[0]
@@ -93,8 +93,8 @@ def check_finish(args: dict, view, *, goal: str, corrections: list[str], typed: 
         wanted = screens.normalize(phrase)
         if not 4 <= len(wanted) <= 120:
             return f'"{phrase}" is too short or too long to count as proof'
-        if not any(wanted in text or _overlap(wanted, text) >= 0.85 for text in shown):
-            return _miss(phrase, view)
+        if not any(wanted in text or _word_overlap(wanted, text) >= 0.85 for text in shown):
+            return _proof_not_found(phrase, view)
         if wanted != screens.normalize(app_label) and not any(wanted in words for words in own_words):
             new_info = True
     if not new_info:
@@ -108,14 +108,14 @@ def check_finish(args: dict, view, *, goal: str, corrections: list[str], typed: 
     return None
 
 
-def _miss(phrase: str, view) -> str:
+def _proof_not_found(phrase: str, view) -> str:
     texts = screens.proof_texts(view)
     close = difflib.get_close_matches(phrase, texts, n=5, cutoff=0.2) or texts[:5]
     options = "; ".join(f'"{text}"' for text in close)
     return f'"{phrase}" is not on the current screen. Copy proof exactly, for example: {options}'
 
 
-def _overlap(a: str, b: str) -> float:
+def _word_overlap(a: str, b: str) -> float:
     words = a.split()
     if not words:
         return 0.0
@@ -123,7 +123,7 @@ def _overlap(a: str, b: str) -> float:
     return sum(word in other for word in words) / len(words)
 
 
-def _scrollable(view, index: int) -> int | None:
+def _scrollable_ancestor(view, index: int) -> int | None:
     nodes = {node.index: node for node in view.screen.nodes}
     seen = set()
     current = nodes.get(index)

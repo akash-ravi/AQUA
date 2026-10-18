@@ -11,7 +11,7 @@ BOX = (233, 30, 99)
 LABEL_TEXT = (255, 255, 255)
 
 
-def marked_picture(image, view) -> bytes | str:
+def annotate_screenshot(image, view) -> bytes | str:
     """The phone's screenshot with every numbered item boxed and labelled, as JPEG bytes (or a plain problem)."""
     try:
         raw = base64.b64decode(image.data, validate=True)
@@ -33,8 +33,8 @@ def marked_picture(image, view) -> bytes | str:
         left, top, right, bottom = (round(value * scale) for value in line.node.bounds)
         draw.rectangle((left, top, right, bottom), outline=BOX, width=2)
         number = str(line.index)
-        text_box = draw.textbbox((0, 0), number, font=font)
-        width, height = text_box[2] - text_box[0] + 6, text_box[3] - text_box[1] + 6
+        find_text_field = draw.textbbox((0, 0), number, font=font)
+        width, height = find_text_field[2] - find_text_field[0] + 6, find_text_field[3] - find_text_field[1] + 6
         draw.rectangle((left, top, left + width, top + height), fill=BOX)
         draw.text((left + 3, top + 1), number, fill=LABEL_TEXT, font=font)
 
@@ -47,7 +47,7 @@ def marked_picture(image, view) -> bytes | str:
     return out.getvalue()
 
 
-def needs_picture(view) -> bool:
+def needs_screenshot(view) -> bool:
     """True when the screen text alone probably isn't enough (unlabelled buttons, canvas or web content)."""
     clickable = [line for line in view.lines if line.node.clickable]
     if not clickable:

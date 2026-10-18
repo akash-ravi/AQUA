@@ -89,14 +89,14 @@ def render(screen: Screen, apps: dict[str, str] | None = None, max_lines: int = 
     for node in tree.nodes.values():
         if node.index in folded:
             continue
-        label = own_text(node)
-        if not label and folds_children(node):
-            parts = plain_parts(tree, node)
+        label = node_text(node)
+        if not label and merges_child_text(node):
+            parts = text_parts(tree, node)
             folded.update(part.index for part, _ in parts)
             label = " · ".join(text for _, text in parts)
             if parts:
                 first_texts[node.index] = parts[0][1]
-        if not interactive(node) and not label:
+        if not is_interactive(node) and not label:
             continue
         if not label and node.resource_id and not node.editable and not node.scrollable:
             label = "id: " + node.resource_id.split("/")[-1]
@@ -112,7 +112,7 @@ def render(screen: Screen, apps: dict[str, str] | None = None, max_lines: int = 
         role = role_of(node, node.index in has_shown_children)
         label = labels[node.index]
         depth = min(MAX_DEPTH, sum(1 for a in tree.ancestors(node) if a.index in shown_ids))
-        lines.append(Line(node.index, role, cut(label, MAX_LABEL), states_of(node, role, label, screen), depth, None, node))
+        lines.append(Line(node.index, role, truncate(label, MAX_LABEL), states_of(node, role, label, screen), depth, None, node))
 
     button_counts = Counter(normalize(line.label) for line in lines if line.role == "button" and line.label)
     for line in lines:
@@ -120,9 +120,9 @@ def render(screen: Screen, apps: dict[str, str] | None = None, max_lines: int = 
         if line.role == "button" and line.label and (button_counts[key] >= 2 or key in SHARED_BUTTON_LABELS):
             name = item_name(tree, line.node, first_texts)
             if name and normalize(name) != key:
-                line.for_item = cut(name, MAX_LABEL)
+                line.for_item = truncate(name, MAX_LABEL)
 
-    lines, hidden_count = fit(tree, lines, max_lines)
+    lines, hidden_count = limit_lines(tree, lines, max_lines)
     by_index = {line.index: line for line in lines}
     app = (apps or {}).get(screen.package_name) or screen.package_name
 
@@ -148,7 +148,7 @@ def line_text(line: Line) -> str:
         text += f" ({state})"
     if line.for_item:
         text += f" (for {line.for_item})"
-    return cut(text, MAX_LINE)
+    return truncate(text, MAX_LINE)
 
 
 def role_of(node: Node, has_shown_children: bool) -> str:
@@ -178,7 +178,7 @@ def states_of(node: Node, role: str, label: str, screen: Screen) -> list[str]:
         if not label:
             states.append("empty")
     elif not label and role != "list":
-        states.append(f"no label, {position(node, screen)}" if node.clickable else "no label")
+        states.append(f"no label, {screen_region(node, screen)}" if node.clickable else "no label")
     if role == "switch":
         states.append("on" if node.checked else "off")
     elif node.checkable:
@@ -186,7 +186,7 @@ def states_of(node: Node, role: str, label: str, screen: Screen) -> list[str]:
     return states
 
 
-def position(node: Node, screen: Screen) -> str:
+def screen_region(node: Node, screen: Screen) -> str:
     left, top, right, bottom = node.bounds
     x = (left + right) / 2 / screen.width
     y = (top + bottom) / 2 / screen.height
@@ -199,23 +199,23 @@ def item_name(tree: Tree, button: Node, first_texts: dict[int, str]) -> str | No
     for ancestor in tree.ancestors(button):
         if ancestor.scrollable:
             break
-        name = own_text(ancestor) or first_texts.get(ancestor.index)
+        name = node_text(ancestor) or first_texts.get(ancestor.index)
         if not name:
-            parts = plain_parts(tree, ancestor)
+            parts = text_parts(tree, ancestor)
             name = parts[0][1] if parts else None
         if name:
             return name
     siblings = tree.children.get(tree.parent_index(button), [])
     earlier = siblings[: next(i for i, s in enumerate(siblings) if s.index == button.index)]
     for sibling in reversed(earlier):
-        parts = plain_parts(tree, sibling)
-        name = own_text(sibling) or (parts[0][1] if parts else None)
+        parts = text_parts(tree, sibling)
+        name = node_text(sibling) or (parts[0][1] if parts else None)
         if name:
             return name
     return None
 
 
-def fit(tree: Tree, lines: list[Line], max_lines: int) -> tuple[list[Line], int]:
+def limit_lines(tree: Tree, lines: list[Line], max_lines: int) -> tuple[list[Line], int]:
     extra = len(lines) - max_lines
     if extra <= 0:
         return lines, 0
@@ -230,15 +230,15 @@ def fit(tree: Tree, lines: list[Line], max_lines: int) -> tuple[list[Line], int]
     return [line for i, line in enumerate(lines) if i not in dropped], len(dropped)
 
 
-def interactive(node: Node) -> bool:
+def is_interactive(node: Node) -> bool:
     return node.clickable or node.editable or node.checkable or node.scrollable
 
 
-def folds_children(node: Node) -> bool:
+def merges_child_text(node: Node) -> bool:
     return (node.clickable or node.checkable) and not node.editable and not node.scrollable
 
 
-def own_text(node: Node) -> str:
+def node_text(node: Node) -> str:
     return clean_text(node.text) or clean_text(node.description)
 
 
@@ -246,7 +246,7 @@ def clean_text(text: str | None) -> str:
     return " ".join(text.split()) if text else ""
 
 
-def plain_parts(tree: Tree, node: Node) -> list[tuple[Node, str]]:
+def text_parts(tree: Tree, node: Node) -> list[tuple[Node, str]]:
     parts = []
     seen = {node.index}
     stack = list(reversed(tree.children.get(node.index, [])))
@@ -255,16 +255,16 @@ def plain_parts(tree: Tree, node: Node) -> list[tuple[Node, str]]:
         if child.index in seen:
             continue
         seen.add(child.index)
-        if interactive(child):
+        if is_interactive(child):
             continue
-        text = own_text(child)
+        text = node_text(child)
         if text:
             parts.append((child, text))
         stack.extend(reversed(tree.children.get(child.index, [])))
     return parts
 
 
-def cut(text: str, limit: int) -> str:
+def truncate(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
@@ -304,7 +304,7 @@ def signature(view: View) -> str:
 def describe_change(before: View, after: View) -> str:
     if before.signature == after.signature:
         return "no change"
-    if before.screen.package_name != after.screen.package_name or same_share(before, after) < SAME_SCREEN_SHARE:
+    if before.screen.package_name != after.screen.package_name or overlap_ratio(before, after) < SAME_SCREEN_SHARE:
         return f"new screen: {after.app}"
 
     changes = []
@@ -316,13 +316,13 @@ def describe_change(before: View, after: View) -> str:
         elif old.states != line.states:
             edits.append(state_change(old, line))
     changes += edits[:3]
-    changes += ([f"new {line.role} {name_of(line)}" for line in new] + [f"{name_of(line)} gone" for line in gone])[:2]
+    changes += ([f"new {line.role} {display_name(line)}" for line in new] + [f"{display_name(line)} gone" for line in gone])[:2]
     if not changes:
         return "same screen; small changes"
     return "same screen; changed: " + "; ".join(changes)
 
 
-def same_share(before: View, after: View) -> float:
+def overlap_ratio(before: View, after: View) -> float:
     size = max(len(before.lines), len(after.lines))
     if size == 0:
         return 1.0
@@ -373,11 +373,11 @@ def state_change(old: Line, line: Line) -> str:
     gained = [s for s in line.states if s not in old.states]
     lost = [s for s in old.states if s not in line.states]
     if gained:
-        return f"{name_of(line)} now {', '.join(gained)}"
-    return f"{name_of(line)} no longer {', '.join(lost)}"
+        return f"{display_name(line)} now {', '.join(gained)}"
+    return f"{display_name(line)} no longer {', '.join(lost)}"
 
 
-def name_of(line: Line) -> str:
+def display_name(line: Line) -> str:
     return f'"{line.label}"' if line.label else f"{line.role} [{line.index}]"
 
 
@@ -389,8 +389,8 @@ def proof_texts(view: View) -> list[str]:
         if node.editable:
             continue
         candidates = [line.label, clean_text(node.text), clean_text(node.description)]
-        if folds_children(node) and not own_text(node):
-            candidates += [text for _, text in plain_parts(tree, node)]
+        if merges_child_text(node) and not node_text(node):
+            candidates += [text for _, text in text_parts(tree, node)]
         for text in candidates:
             if text and text not in texts:
                 texts.append(text)

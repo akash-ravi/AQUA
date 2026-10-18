@@ -61,7 +61,7 @@ def _schema(param: Param) -> dict:
     return schema
 
 
-def claude_tools(tools: list[Tool]) -> list[dict]:
+def tool_schemas() -> list[dict]:
     def prop(param: Param) -> dict:
         if param.required:
             return {**_schema(param), "description": param.description}
@@ -79,5 +79,5 @@ def claude_tools(tools: list[Tool]) -> list[dict]:
             },
             "strict": True,
         }
-        for tool in tools
+        for tool in TOOLS
     ]

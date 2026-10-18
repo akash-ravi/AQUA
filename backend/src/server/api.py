@@ -1,13 +1,14 @@
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import PlainTextResponse
 
+from src.agent.brain import Brain
+from src.agent.task import Notebook, Task
+from src.ai.model import AI
 from src.config import Settings
-from src.phone.link import PhoneGone, PhoneLink
+from src.phone.link import PhoneDisconnected, PhoneLink
 from src.phone.messages import new_id
 
 log = logging.getLogger("jarvis.server")
@@ -15,19 +16,7 @@ log = logging.getLogger("jarvis.server")
 START_SECONDS = 10.0
 
 
-@dataclass
-class Run:
-    device_id: str
-    task_id: str
-    goal: str
-    link: PhoneLink
-    settings: Settings
-
-
-RunTask = Callable[[Run], Awaitable[None]]
-
-
-def create_app(settings: Settings, routine: RunTask) -> FastAPI:
+def create_app(settings: Settings, ai: AI) -> FastAPI:
     app = FastAPI()
 
     @app.get("/health", response_class=PlainTextResponse)
@@ -44,8 +33,8 @@ def create_app(settings: Settings, routine: RunTask) -> FastAPI:
         await websocket.accept()
         link = PhoneLink(websocket)
         try:
-            await handle_phone(link, settings, routine, websocket.client.host if websocket.client else "")
-        except PhoneGone:
+            await handle_phone(link, settings, ai, websocket.client.host if websocket.client else "")
+        except PhoneDisconnected:
             log.info("The phone disconnected.")
         finally:
             await link.close()
@@ -53,21 +42,23 @@ def create_app(settings: Settings, routine: RunTask) -> FastAPI:
     return app
 
 
-async def handle_phone(link: PhoneLink, settings: Settings, routine: RunTask, device_id: str) -> None:
+async def handle_phone(link: PhoneLink, settings: Settings, ai: AI, device_id: str) -> None:
     start = await wait_for_start(link)
     if start is None:
         return
 
-    run = Run(device_id, new_id("t"), start.task, link, settings)
-    log.info("New task %s from %s.", run.task_id, device_id)
+    task = Task(goal=start.task, id=new_id("t"))
+    log.info("New task %s from %s.", task.id, device_id)
     try:
         link.start(start)
         await link.load_apps()
-        await routine(run)
-    except PhoneGone:
-        log.info("Task %s: the phone disconnected.", run.task_id)
+        notebook = Notebook(settings.data_dir, task.id)
+        notebook.write("task", task_id=task.id, goal=task.goal, device_id=device_id, ai=ai.name)
+        await Brain(task, link, ai, notebook).run()
+    except PhoneDisconnected:
+        log.info("Task %s: the phone disconnected.", task.id)
     except Exception:
-        log.exception("Task %s crashed.", run.task_id)
+        log.exception("Task %s crashed.", task.id)
         await link.fail("Something went wrong on the Mac.")
 
 
