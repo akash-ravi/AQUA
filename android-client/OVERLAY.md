@@ -21,10 +21,22 @@ not override it. The aura uses maximum display bounds, extends into system-bar/c
 ignores keyboard resizing, and follows the screen's reported corner radii. It updates on
 rotation. The app's activity log is collapsed by default.
 
+Overlay views and metrics use a display-bound accessibility window context. If attaching
+the optional aura fails, it is disabled for the service session and logged under `JarvisAura`
+so task startup can continue without the effect.
+
+Submitting a task intentionally backgrounds the main activity so the agent can operate
+other apps. A connection or backend failure must not dismiss the panel. If startup itself
+fails, the main activity stays in front and the exception is logged under `JarvisTask`.
+
 Both assistant entry points go through `AssistantActivity`, which releases its invocation
 window before opening the composer. If accessibility is not connected, the app opens with
 a pending overlay request that is retried when you return from accessibility settings.
-When a task ends, the service dismisses both the panel and aura; accessibility stays enabled.
+When a task completes, the service dismisses both the panel and aura; accessibility stays enabled.
+Errors and unexpected disconnects keep an explanation visible instead of silently closing
+the assistant. If a backend supplies an `outcome` in its final `done` frame, failed,
+unconfirmed, and needs-user outcomes also keep the panel open. A `done` frame without an
+outcome is treated as completed for compatibility with the existing backend protocol.
 For call requests, the backend is instructed to finish on outgoing-call evidence for the
 intended contact, without waiting for an answer or ending the call. A clicked Call button
 alone is not proof of completion.

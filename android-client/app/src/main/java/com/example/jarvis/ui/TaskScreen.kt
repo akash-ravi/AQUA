@@ -61,6 +61,7 @@ fun TaskScreen(
     val submit = { if (canSubmit) onSubmitTask(task.trim()) }
     val canAnswer = answer.isNotBlank() && answer.trim().length <= MAX_INPUT_CHARS
     val status = when {
+        state.failed -> "CHECK TASK"
         !state.running -> "READY"
         state.pauseRequested -> "PAUSING"
         state.paused -> "PAUSED"

@@ -7,6 +7,16 @@ import kotlinx.coroutines.flow.update
 // Matches backend jarvis.messages.MAX_TEXT for tasks and answers.
 const val MAX_INPUT_CHARS = 2000
 
+enum class TaskOutcome {
+    COMPLETED, STOPPED, FAILED, UNCONFIRMED, NEEDS_USER;
+
+    val dismissOverlay: Boolean get() = this == COMPLETED || this == STOPPED
+
+    companion object {
+        fun fromWire(value: String) = entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: FAILED
+    }
+}
+
 data class Question(val id: String, val text: String)
 
 data class AgentUiState(
@@ -16,6 +26,7 @@ data class AgentUiState(
     val pauseRequested: Boolean = false,
     val paused: Boolean = false,
     val message: String? = null,
+    val failed: Boolean = false,
 )
 
 object AgentState {
@@ -43,7 +54,8 @@ object AgentState {
         it.copy(paused = paused, pauseRequested = false, question = if (paused) null else it.question)
     }
 
-    fun message(text: String) = mutableState.update { it.copy(message = text) }
-
-    fun end() = mutableState.update { it.copy(running = false, question = null, paused = false, pauseRequested = false) }
+    fun finish(outcome: TaskOutcome, message: String) = mutableState.update {
+        it.copy(running = false, question = null, paused = false, pauseRequested = false,
+            message = message, failed = !outcome.dismissOverlay)
+    }
 }

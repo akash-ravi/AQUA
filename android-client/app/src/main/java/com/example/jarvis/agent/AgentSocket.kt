@@ -2,6 +2,7 @@ package com.example.jarvis.agent
 
 import com.example.jarvis.device.CommandException
 import com.example.jarvis.device.CommandExecutor
+import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -20,7 +21,7 @@ class AgentSocket(
     private val url: String,
     private val executor: CommandExecutor,
     private val scope: CoroutineScope,
-    private val onFinished: () -> Unit,
+    private val onFinished: (TaskOutcome, String) -> Unit,
 ) {
     private val client = OkHttpClient.Builder()
         .pingInterval(PING_INTERVAL_SECONDS, TimeUnit.SECONDS)
@@ -46,13 +47,12 @@ class AgentSocket(
             override fun onMessage(webSocket: WebSocket, text: String) = handleMessage(text)
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                if (!finished.get()) AgentState.message("Connection closed. Check the task before trying again.")
-                finish("connection closed")
+                finish("Connection closed. Check the task before trying again.")
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                if (!finished.get()) AgentState.message("Connection failed. Check the backend and Wi-Fi before trying again.")
-                finish("connection failed: ${t.message}")
+                Log.e("JarvisConnection", "Task WebSocket failed", t)
+                finish("Connection failed. Check the backend address and Wi-Fi before trying again.")
             }
         })
     }
@@ -67,7 +67,7 @@ class AgentSocket(
         if (finished.get()) return
         webSocket?.send(JSONObject().put("type", "stop").toString())
         webSocket?.close(NORMAL_CLOSE, null)
-        finish("stopped")
+        finish("Stopped", TaskOutcome.STOPPED)
     }
 
     fun pause() {
@@ -96,12 +96,11 @@ class AgentSocket(
                 "running" -> AgentState.setPaused(false)
             }
             "done" -> {
-                AgentState.message(message.optString("summary"))
-                closeWith("done: ${message.optString("summary")}")
+                closeWith(message.optString("summary"),
+                    TaskOutcome.fromWire(message.optString("outcome", "completed")))
             }
             "error" -> {
-                AgentState.message(message.optString("message"))
-                closeWith("server error: ${message.optString("message")}")
+                closeWith(message.optString("message"), TaskOutcome.FAILED)
             }
             else -> AgentState.log("ignored message of type '${message.optString("type")}'")
         }
@@ -129,18 +128,18 @@ class AgentSocket(
         if (name == "readScreen" && reply.optBoolean("ok") && !finished.get()) ready.set(true)
     }
 
-    private fun closeWith(message: String) {
+    private fun closeWith(message: String, outcome: TaskOutcome) {
         webSocket?.close(NORMAL_CLOSE, null)
-        finish(message)
+        finish(message, outcome)
     }
 
-    private fun finish(message: String) {
+    private fun finish(message: String, outcome: TaskOutcome = TaskOutcome.FAILED) {
         if (!finished.compareAndSet(false, true)) return
         ready.set(false)
         AgentState.log(message)
         incomingCommands.close()
         commandWorker?.cancel()
-        onFinished()
+        onFinished(outcome, message)
     }
 
     companion object {
