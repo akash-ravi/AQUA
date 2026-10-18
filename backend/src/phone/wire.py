@@ -11,7 +11,7 @@ ERROR_CODES = {
     "appNotFound": "app_not_found", "needsConfirmation": "needs_confirmation", "secureWindow": "secure_window",
     "badCommand": "bad_command", "cantSubmit": "cant_submit",
 }
-NOTHING_HAPPENED = {"stale_screen", "stale_target", "app_not_found", "needs_confirmation", "bad_command"}
+NO_EFFECT_ERRORS = {"stale_screen", "stale_target", "app_not_found", "needs_confirmation", "bad_command"}
 
 
 def message_to_wire(message) -> dict:
@@ -60,29 +60,29 @@ def result_from_wire(data, command: Command, width: int, height: int) -> Result:
 def failed_result(command: Command, code: str, message: str) -> Result:
     if command.action == "screenshot" and code == "secure_window":
         code = "screenshot_blocked"
-    status = "rejected" if code in NOTHING_HAPPENED else "failed"
+    status = "rejected" if code in NO_EFFECT_ERRORS else "failed"
     return Result(command_id=command.command_id, status=status,
                   error=ErrorInfo(code=code, message=message))
 
 
 def screen_from_wire(payload: dict, width: int, height: int) -> Screen:
-    nodes = with_parents([node_from_wire(node) for node in payload["nodes"]])
+    nodes = assign_parents([node_from_wire(node) for node in payload["nodes"]])
     return Screen(screen_id=payload["screenId"], package_name=payload.get("package") or "", width=width,
                   height=height, truncated=bool(payload.get("truncated")), nodes=nodes)
 
 
-def with_parents(nodes: list[Node]) -> list[Node]:
+def assign_parents(nodes: list[Node]) -> list[Node]:
     # shortcut: the wire has no parent field; assumes nodes arrive in tree order, so the nearest earlier node that contains a node is its parent
     open_ancestors: list[Node] = []
     for node in nodes:
-        while open_ancestors and not contains(open_ancestors[-1].bounds, node.bounds):
+        while open_ancestors and not bounds_contain(open_ancestors[-1].bounds, node.bounds):
             open_ancestors.pop()
         node.parent = open_ancestors[-1].index if open_ancestors else None
         open_ancestors.append(node)
     return nodes
 
 
-def contains(outer: tuple[int, int, int, int], inner: tuple[int, int, int, int]) -> bool:
+def bounds_contain(outer: tuple[int, int, int, int], inner: tuple[int, int, int, int]) -> bool:
     return outer[0] <= inner[0] and outer[1] <= inner[1] and outer[2] >= inner[2] and outer[3] >= inner[3]
 
 

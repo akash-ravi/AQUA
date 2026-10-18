@@ -30,20 +30,19 @@ class Step:
 @dataclass
 class Task:
     goal: str
-    device_id: str
     id: str
     corrections: list[str] = field(default_factory=list)
     answers: list[tuple[str, str]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     steps: list[Step] = field(default_factory=list)
-    done_for_good: list[str] = field(default_factory=list)
-    unsure: list[str] = field(default_factory=list)
+    completed_irreversible: list[str] = field(default_factory=list)
+    uncertain_actions: list[str] = field(default_factory=list)
     screens_seen: list[str] = field(default_factory=list)
     typed_texts: list[str] = field(default_factory=list)
     model_calls: int = 0
-    bad_in_row: int = 0
-    bad_total: int = 0
-    finish_misses: int = 0
+    consecutive_invalid_replies: int = 0
+    invalid_replies: int = 0
+    rejected_finishes: int = 0
     wait_seconds: float = 0.0
 
     def add_note(self, text: str | None) -> None:
@@ -53,7 +52,7 @@ class Task:
         self.notes.append(text)
         del self.notes[:-MAX_NOTES]
 
-    def saw_screen(self, title: str) -> None:
+    def record_screen(self, title: str) -> None:
         if title and (not self.screens_seen or self.screens_seen[-1] != title):
             self.screens_seen.append(title)
             del self.screens_seen[:-MAX_SCREENS_SEEN]
@@ -65,13 +64,9 @@ class Task:
 class Notebook:
     """One JSON line per event, flushed to disk before anything is sent to the phone."""
 
-    def __init__(self, path: Path):
-        self.path = path
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-    @classmethod
-    def for_task(cls, data_dir: Path, task_id: str) -> "Notebook":
-        return cls(Path(data_dir) / "tasks" / f"{task_id}.jsonl")
+    def __init__(self, data_dir: Path, task_id: str):
+        self.path = Path(data_dir) / "tasks" / f"{task_id}.jsonl"
+        self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def write(self, event: str, **data) -> None:
         line = {"at": datetime.now(timezone.utc).isoformat(timespec="milliseconds"), "event": event, **data}
@@ -79,38 +74,3 @@ class Notebook:
             file.write(json.dumps(line, ensure_ascii=False, default=str) + "\n")
             file.flush()
             os.fsync(file.fileno())
-
-    def read(self) -> list[dict]:
-        if not self.path.exists():
-            return []
-        events = []
-        with open(self.path, encoding="utf-8") as file:
-            for line in file:
-                line = line.strip()
-                if line:
-                    try:
-                        events.append(json.loads(line))
-                    except ValueError:
-                        pass
-        return events
-
-
-def mark_interrupted_after_restart(data_dir: Path) -> list[str]:
-    """Tasks that were running when the server stopped: unanswered commands become unknown."""
-    marked = []
-    for path in sorted((Path(data_dir) / "tasks").glob("*.jsonl")):
-        notebook = Notebook(path)
-        events = notebook.read()
-        if not events or any(e["event"] == "done" for e in events):
-            continue
-        if any(e["event"] == "status" and e.get("to") == "interrupted" and e.get("reason") == "server restart"
-               for e in events[-3:]):
-            continue
-        answered = {e.get("command_id") for e in events if e["event"] in ("step_result", "late_result")}
-        for event in events:
-            if event["event"] == "step_sending" and event.get("command_id") not in answered:
-                notebook.write("step_result", n=event.get("n"), command_id=event.get("command_id"),
-                               status="unknown", error="no_result", change="server restarted before the phone answered")
-        notebook.write("status", to="interrupted", reason="server restart")
-        marked.append(path.stem)
-    return marked

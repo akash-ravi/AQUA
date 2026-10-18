@@ -157,14 +157,14 @@ def parse_phone_message(raw: str):
         raise BadMessage(f"unknown message type {kind!r}")
     if kind != "result" and len(raw) > MAX_OTHER_CHARS:
         raise BadMessage(f"{kind} message is too large")
-    _trim(data)
+    _truncate_payload(data)
     try:
         return _read_phone_message.validate_python(data)
     except ValidationError as error:
-        raise BadMessage(_first_problem(error)) from None
+        raise BadMessage(_first_validation_error(error)) from None
 
 
-def clean_screen(screen: Screen) -> Screen:
+def sanitize_screen(screen: Screen) -> Screen:
     seen: set[int] = set()
     nodes = []
     for node in screen.nodes:
@@ -195,7 +195,7 @@ def _load_object(raw: str) -> dict:
     return data
 
 
-def _trim(data: dict) -> None:
+def _truncate_payload(data: dict) -> None:
     payload = data.get("data")
     if not isinstance(payload, dict):
         return
@@ -212,7 +212,7 @@ def _trim(data: dict) -> None:
         payload["apps"] = payload["apps"][:MAX_APPS]
 
 
-def _first_problem(error: ValidationError) -> str:
+def _first_validation_error(error: ValidationError) -> str:
     problem = error.errors()[0]
     where = ".".join(str(part) for part in problem.get("loc", ()))
     return f"{where}: {problem.get('msg', 'invalid value')}" if where else problem.get("msg", "invalid value")

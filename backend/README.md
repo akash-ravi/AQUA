@@ -34,10 +34,6 @@ Check:         http://<mac-ip>:8000/health
 - Campus Wi-Fi often blocks phone-to-laptop traffic. Then plug in USB, run `adb reverse tcp:8000 tcp:8000`, and use the USB address.
 - The phone app needs the setup in `.agents/phone-protocol.md` section 8 (internet permission, plain `ws://` allowed, and so on) or it can't connect.
 
-**First test with the real phone (no AI involved):** `.venv/bin/jarvis --smoke`. Send any task from
-the phone; the server reads the screen, goes home, opens DoorDash, goes back, and prints each screen as the AI would see
-it. If that works, the phone side speaks the protocol correctly.
-
 **The DoorDash test**, in three passes on the real phone:
 1. "Search DoorDash for pizza" — navigation only.
 2. "Order a large pepperoni pizza from DoorDash" — answer **No** when it asks "Place order …?". Nothing is bought.
@@ -49,11 +45,10 @@ Every task's events are logged to `data/tasks/<task_id>.jsonl`, one JSON line pe
 
 ```
 src/
-  app.py             start the server (`jarvis`, `jarvis --smoke`)
+  app.py             start the server (`jarvis`)
   config.py          settings from .env
   server/
-    api.py           FastAPI: /health and the phone WebSocket at /agent, one connection per task
-    smoke.py         the --smoke routine: drives the phone with no AI
+    api.py           FastAPI: /health and the phone WebSocket at /agent, one task per connection
   phone/
     link.py          one phone conversation: send a command and wait for its result, ask the user, notice Stop
     messages.py      message models and validation
@@ -61,13 +56,13 @@ src/
   agent/
     brain.py         the loop: look at the screen, ask Claude for one action, check it, send it, note what changed
     screen.py        turns the phone's screen into numbered lines Claude can read
-    pictures.py      screenshots when Claude asks or the text isn't enough, with numbered boxes drawn on them
+    screenshots.py   screenshots when Claude asks or the text isn't enough, with numbered boxes drawn on them
     prompt.py        Claude's rules and the message it gets each step
     checks.py        is the action possible on this screen
     safety.py        anything that can't be undone (order, pay, send) needs your Yes first; secrets stay hidden
     task.py          what we know so far, and the notebook: data/tasks/<task_id>.jsonl, written before each command
   ai/
-    claude.py        the Claude call (strict tool use, one action per call) and its errors
+    model.py         the model call (strict tool use, one action per call) and its errors
     tools.py         the actions Claude can choose from
 ```
 
