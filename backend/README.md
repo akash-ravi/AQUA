@@ -13,6 +13,10 @@ python3.12 -m venv .venv
 cp .env.example .env          # then put your Anthropic key in .env (or run `ant auth login`)
 ```
 
+Put your ElevenLabs key in `ELEVENLABS_API_KEY` for the phone's speech in and out. The phone never gets the key: it asks
+`POST /voice/listen` or `/voice/speak` for a single-use token and streams straight to ElevenLabs. Without a key the phone
+speaks with its own voice and can't take speech input. `JARVIS_VOICE_ID` picks the voice.
+
 `.env` also picks the model (`JARVIS_MODEL`, default `claude-opus-5-5`) and effort (`JARVIS_EFFORT`, default `low`).
 Settings use a `JARVIS_` prefix because Claude Code exports its own `CLAUDE_*` variables.
 
@@ -59,7 +63,7 @@ src/
   app.py             start the server (`jarvis`)
   config.py          settings from .env
   server/
-    api.py           FastAPI: /health and the phone WebSocket at /agent, one task per connection
+    api.py           FastAPI: /health, /voice tokens, and the phone WebSocket at /agent, one task per connection
   phone/
     link.py          one phone conversation: send a command and wait for its result, ask the user, notice Stop
     messages.py      message models and validation
@@ -73,6 +77,7 @@ src/
     safety.py        anything that can't be undone (order, pay, send) needs your Yes first; secrets stay hidden
     task.py          what we know so far, and the notebook: data/tasks/<task_id>.jsonl, written before each command
   ai/
+    elevenlabs.py    single-use ElevenLabs tokens for the phone's speech
     model.py         the model call (strict tool use, one action per call) and its errors
     tools.py         the actions Claude can choose from
 ```
@@ -80,7 +85,7 @@ src/
 ## Privacy note
 
 Screen text and screenshots go to the Anthropic API; the DoorDash checkout screen shows your address and card. Screens
-and screenshots are never saved to disk.
+and screenshots are never saved to disk. Your voice and Jarvis's replies go to ElevenLabs.
 
 ## Troubleshooting
 

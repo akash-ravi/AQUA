@@ -8,7 +8,7 @@
 <a href="#how-it-works"><img src="https://img.shields.io/badge/Claude-Opus%205.5-FF3B4E?style=for-the-badge&logo=anthropic&logoColor=white" alt="Claude Opus 5.5"/></a>
 <a href="android-client"><img src="https://img.shields.io/badge/Kotlin-Compose-FFB77A?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin"/></a>
 <a href="backend"><img src="https://img.shields.io/badge/Python-3.12-211714?style=for-the-badge&logo=python&logoColor=FFB77A" alt="Python 3.12"/></a>
-<a href="#voice-that-feels-like-a-conversation"><img src="https://img.shields.io/badge/Speech-on--device-30211D?style=for-the-badge&logo=onnx&logoColor=FFB77A" alt="On-device speech"/></a>
+<a href="#voice-that-feels-like-a-conversation"><img src="https://img.shields.io/badge/Speech-ElevenLabs-30211D?style=for-the-badge&logo=elevenlabs&logoColor=FFB77A" alt="ElevenLabs speech"/></a>
 
 <h3>An AI agent that uses your phone the way you do: it reads the screen, taps, types and scrolls,<br/>across any app, until the job is done and it can prove it.</h3>
 
@@ -146,7 +146,7 @@ because one app is too hard.
 | **worry about mistakes or scams** | won't order, pay, send or delete without your spoken Yes, double-checks that Yes, and ignores instructions written on screen |
 | **get lost in menus** | asks one question at a time, with up to six simple choices |
 | **want to know it really worked** | only says "done" when it can quote the confirmation from the screen |
-| **care about privacy** | turns your speech into text on the phone, offline, and never saves screens or screenshots to disk |
+| **care about privacy** | never saves screens or screenshots to disk, and keeps its API keys on your computer, never on the phone |
 
 <br/>
 
@@ -157,7 +157,7 @@ and a glow around the screen edge, read a short status line, and hear it when it
 
 | | |
 |---|---|
-| **Talk to it** | Hold the assistant gesture or tap the orb and speak. Speech recognition runs **on the phone**, offline. |
+| **Talk to it** | Hold the assistant gesture or tap the orb and speak. Your words stream to ElevenLabs and come back as text in a fraction of a second. |
 | **It plans** | Turns "order a large pepperoni from DoorDash" into search → pick → size → cart → checkout. |
 | **It acts** | Taps, types, scrolls, goes back and opens apps, on the real UI, in **any app**. |
 | **It checks itself** | After every action it asks *what changed?* If nothing did, it tries something else. |
@@ -234,9 +234,9 @@ outside the model.
 
 ## Voice that feels like a conversation
 
-- **On-device speech recognition:** [Moonshine](https://github.com/usefulsensors/moonshine) ASR with Silero VAD,
-  running locally through [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). The models are pinned and
-  SHA-256 verified at build time. Your voice never leaves the phone.
+- **Fast speech both ways:** [ElevenLabs](https://elevenlabs.io) Scribe v2 Realtime hears you and Flash v2.5
+  answers, both streamed straight from the phone. The key stays on your computer; the phone gets single-use tokens.
+  If ElevenLabs is unreachable, Jarvis still talks through the phone's own voice.
 - **Interruptible duplex:** Jarvis speaks only when it matters (questions, the approval summary, the result), in a few casual words, and you can interrupt it to answer.
 - **It feels alive:** a Gemini-style screen-edge aura and a Siri-style orb respond to its state and to the live
   loudness of your voice. They flow while it works, brighten while it listens, and dim when paused.
@@ -329,7 +329,7 @@ sequenceDiagram
 cd backend
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -e .
-cp .env.example .env              # add ANTHROPIC_API_KEY
+cp .env.example .env              # add ANTHROPIC_API_KEY and ELEVENLABS_API_KEY
 .venv/bin/jarvis                  # serves ws://0.0.0.0:8000/agent
 ```
 
@@ -346,7 +346,7 @@ To use the dashboard: `pip install -e '.[dashboard]' && streamlit run dashboard.
    AGENT_URL=ws://<your-computer-ip>:8000/agent
    ```
    On USB, run `adb reverse tcp:8000 tcp:8000` and use `ws://127.0.0.1:8000/agent`.
-2. Open `android-client/` in Android Studio and run it. The first build downloads the pinned speech models.
+2. Open `android-client/` in Android Studio and run it.
 3. In the app, turn on the **Jarvis accessibility service**. You can also set Jarvis as the **default assistant**.
 4. Tap **Show assistant** and say what you want.
 
@@ -382,7 +382,7 @@ JARVIS/
 ├── android-client/          the hands, eyes and voice (Kotlin)
 │   └── app/src/main/java/com/example/jarvis/
 │       ├── device/          screen reader, gestures, command executor, confirmation guard
-│       ├── voice/           on-device ASR, duplex turn-taking, system TTS
+│       ├── voice/           ElevenLabs speech in and out, duplex turn-taking, system TTS fallback
 │       ├── overlay/         orb, edge aura, floating panel
 │       ├── assistant/       Android VoiceInteractionService (default assistant)
 │       └── agent/           WebSocket client and task state

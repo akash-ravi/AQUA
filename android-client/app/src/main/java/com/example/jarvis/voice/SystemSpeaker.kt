@@ -15,9 +15,8 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.exp
 
 /**
- * The phone's own text-to-speech engine (Google's on Pixel): it starts talking within a few
- * hundred milliseconds, so it is the primary voice. It exposes no audio, so loudness for the
- * orb and edge glow is a pulse on each spoken word.
+ * The phone's own text-to-speech engine (Google's on Pixel), used when ElevenLabs can't speak (no key on
+ * the Mac, no network). It exposes no audio, so loudness for the orb and edge glow is a pulse on each spoken word.
  */
 internal class SystemSpeaker(context: Context) {
     private val main = Handler(Looper.getMainLooper())

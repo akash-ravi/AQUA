@@ -1,11 +1,12 @@
 import asyncio
 import logging
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import PlainTextResponse
 
 from src.agent.brain import Brain
 from src.agent.task import Notebook, Task
+from src.ai.elevenlabs import TOKEN_TYPES, ElevenLabs
 from src.ai.model import AI
 from src.config import Settings
 from src.phone.link import PhoneDisconnected, PhoneLink
@@ -18,10 +19,26 @@ START_SECONDS = 10.0
 
 def create_app(settings: Settings, ai: AI) -> FastAPI:
     app = FastAPI()
+    key = settings.elevenlabs_api_key.get_secret_value() if settings.elevenlabs_api_key else ""
+    elevenlabs = ElevenLabs(key) if key else None
 
     @app.get("/health", response_class=PlainTextResponse)
     async def health() -> str:
         return "ok"
+
+    @app.post("/voice/{kind}")
+    async def voice_token(kind: str, request: Request) -> dict:
+        # Same rule as /agent: a web page must not mint tokens on the Mac's account.
+        if "origin" in request.headers:
+            raise HTTPException(403)
+        if kind not in TOKEN_TYPES:
+            raise HTTPException(404)
+        if elevenlabs is None:
+            raise HTTPException(503, "ELEVENLABS_API_KEY is not set in backend/.env")
+        token = await elevenlabs.token(kind)
+        if token is None:
+            raise HTTPException(502, "ElevenLabs refused the token request")
+        return {"token": token, "voice_id": settings.voice_id} if kind == "speak" else {"token": token}
 
     @app.websocket("/agent")
     async def agent(websocket: WebSocket) -> None:

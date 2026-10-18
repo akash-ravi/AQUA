@@ -19,7 +19,8 @@ def main() -> None:
         log.setLevel(logging.DEBUG)  # only jarvis.*; uvicorn and the SDK stay at info
     settings = Settings()
     ai = AI(settings)
-    log.info("AI: %s · effort %s · Jev %s", ai.name, settings.effort, "on" if ai.jev else "off")
+    log.info("AI: %s · effort %s · Jev %s · ElevenLabs voice %s", ai.name, settings.effort,
+             "on" if ai.jev else "off", "on" if settings.elevenlabs_api_key else "off (set ELEVENLABS_API_KEY)")
     uvicorn.run(
         create_app(settings, ai),
         host="0.0.0.0",

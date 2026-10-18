@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # None lets the SDK find a key or `ant auth login` profile itself
     anthropic_api_key: SecretStr | None = Field(None, validation_alias="ANTHROPIC_API_KEY")
     typesafe_api_key: SecretStr | None = Field(None, validation_alias="TYPESAFE_API_KEY")
+    # The phone's speech in and out; it never sees this key, only single-use tokens minted from it.
+    elevenlabs_api_key: SecretStr | None = Field(None, validation_alias="ELEVENLABS_API_KEY")
+    voice_id: str = "JBFqnCBsd6RMkjVDRZzb"  # ElevenLabs default voice "George"; default voices are the fastest
     model: str = "claude-opus-5-5"
     effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
     data_dir: Path = BACKEND_DIR / "data"

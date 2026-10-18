@@ -432,11 +432,16 @@ a typed correction while running → `update` with the text.
 
 ## 12. HTTP endpoints for the app
 
-Same address and port as the WebSocket. Only one for now:
+Same address and port as the WebSocket. Like `/agent`, a request with an `Origin` header is refused.
 
 | Request | Gives |
 | --- | --- |
 | `GET /health` | `ok` (plain text) — the connection test button |
+| `POST /voice/listen` | `{"token": "..."}` for ElevenLabs realtime speech-to-text |
+| `POST /voice/speak` | `{"token": "...", "voice_id": "..."}` for the ElevenLabs text-to-speech WebSocket |
+
+Voice tokens are single-use and expire after 15 minutes. `503` means `ELEVENLABS_API_KEY` is not set, `502` that
+ElevenLabs refused.
 
 History, task details and an HTTP stop button were removed until the app needs them; a task's full record is in
 `backend/data/tasks/<task_id>.jsonl`.

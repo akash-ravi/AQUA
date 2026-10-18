@@ -13,5 +13,5 @@ local.properties
 .agents/
 .kotlin/
 
-# Downloaded on-device speech models (app/build.gradle.kts speechModels task)
+# On-device speech models from older builds (no longer used; safe to delete)
 /.speech-models/

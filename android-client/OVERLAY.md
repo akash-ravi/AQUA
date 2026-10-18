@@ -92,24 +92,30 @@ be resumed by this version.
 
 ## Voice
 
-Listening is on-device and open source, run through [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx).
-Replies use the phone's own text-to-speech engine (Google's on Pixel), which starts talking within
-a few hundred milliseconds. If no system engine with an English voice is usable, replies are skipped
-but still reported as finished. The manifest declares the `TTS_SERVICE` query, without which Android 11+ hides the engine.
+Speech goes through [ElevenLabs](https://elevenlabs.io), streamed straight from the phone for the lowest
+latency. The ElevenLabs key stays in `backend/.env`. The phone asks the Mac for a single-use token
+(`POST /voice/listen` or `/voice/speak`, valid 15 minutes and good for one connection) and keeps one of each
+fetched ahead, so a turn never waits on that round trip. If ElevenLabs can't speak (no key, no network), replies
+fall back to the phone's own text-to-speech engine. The manifest declares the `TTS_SERVICE` query, without which
+Android 11+ hides that engine. Without ElevenLabs there is no speech input; type instead.
 Jarvis says "Got it." after an answer and speaks questions and the final result. Step
-statuses appear as text. With the system engine, the orb pulses on each word.
+statuses appear as text. The orb follows the loudness of the audio being played.
 
 | Stage | Model | Why |
 | --- | --- | --- |
-| End of speech | Silero VAD | Ends the turn 0.6 s after you stop talking |
-| Speech to text | Moonshine v2 base, English, quantized | ~0.1 real-time factor; decoding starts at end of speech |
+| Speech to text | Scribe v2 Realtime (`scribe_v2_realtime`), English | ~150 ms; its VAD commits the transcript 1 s after you stop talking |
+| Text to speech | Flash v2.5 (`eleven_flash_v2_5`), 22.05 kHz PCM, default voice | ~75 ms model time; audio plays as it streams in |
+
+The text-to-speech WebSocket for the next reply opens while you are talking (and after each reply), so
+speaking skips the connection handshake. An unused one closes after 180 s. Recording starts at once and audio
+captured while the speech-to-text socket connects is sent as soon as the session opens, so nothing is lost.
+Pick a different voice with `JARVIS_VOICE_ID` in `backend/.env`; default voices start fastest, professional clones slowest.
 
 Showing the assistant starts listening; the text box stays as a fallback and the mic button
 toggles listening. A heard utterance goes through the same `AssistantInput` routing as typed
 text. While a question is spoken, the mic remains open if Android's acoustic echo cancellation
-(AEC) is enabled for that recording. Silero's speech detection interrupts playback before
-transcription finishes, and the same recording captures the full answer. This is duplex audio;
-Moonshine still returns the final text at end of speech, not partial transcripts.
+(AEC) is enabled for that recording. The first partial transcript interrupts playback, and the same
+recording captures the full answer. This is duplex audio; the final text arrives when ElevenLabs commits it.
 
 The microphone uses `VOICE_COMMUNICATION` with a session-bound `AcousticEchoCanceler`.
 If AEC cannot be enabled, Jarvis falls back to speaking the question before opening the mic;
@@ -127,20 +133,16 @@ The final result is spoken after the panel settles. Successful task completion s
 the overlay and leaves the mic off, including after placing a call. A failure that leaves the
 panel visible can accept a new task while its explanation is being spoken.
 
-- `voice/SpeechModels.kt` loads the VAD and recognizer on separate background threads when the
-  service connects. Audio recorded before loading finishes is buffered, not dropped.
-- `voice/Listener.kt` records 16 kHz mono PCM16 with `AudioRecord`, converts to model floats,
-  owns the session's AEC, and transcribes one utterance.
-- `voice/SystemSpeaker.kt` wraps Android `TextToSpeech`, preferring the best offline English voice.
+- `voice/VoiceTokens.kt` fetches single-use tokens from the Mac and keeps one of each kind ready.
+- `voice/Listener.kt` records 16 kHz mono PCM16 with `AudioRecord`, owns the session's AEC, and streams
+  one utterance to Scribe v2 Realtime in 50 ms chunks.
+- `voice/ElevenSpeaker.kt` streams Flash v2.5 audio into a low-latency `AudioTrack` and keeps the next
+  reply's connection open.
+- `voice/SystemSpeaker.kt` wraps Android `TextToSpeech`, the fallback voice.
 - `voice/VoiceTurn.kt` coordinates overlapping capture/playback, interruption, the no-AEC
   fallback, and cancellation independently of Android audio APIs.
 - The accessibility service is bound with `BIND_INCLUDE_CAPABILITIES`, so it keeps
   microphone access without a foreground service. `RECORD_AUDIO` is still required.
-
-The models are not in git. The `speechModels` Gradle task downloads pinned, SHA-256-verified
-archives from sherpa-onnx releases into `android-client/.speech-models/` (git-ignored) and
-packages them as uncompressed assets, about 270 MB. The first build needs network. Only
-`arm64-v8a` native libraries are packaged.
 
 ## Guardrail protocol changes
 
