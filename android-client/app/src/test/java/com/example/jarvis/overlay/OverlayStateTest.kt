@@ -19,6 +19,16 @@ class OverlayStateTest {
         assertNull(routeInput(state, AssistantInput("Call someone else")))
     }
 
+    @Test fun `pause request and acknowledged pause do not accept tasks or answers`() {
+        val asking = AgentUiState(running = true, question = Question("q", "Place order?"))
+        val pausing = OverlayState.from(asking.copy(pauseRequested = true))
+        val paused = OverlayState.from(asking.copy(paused = true))
+        assertEquals(OverlayMode.PAUSING, pausing.mode)
+        assertEquals(OverlayMode.PAUSED, paused.mode)
+        assertNull(routeInput(pausing, AssistantInput("yes", questionId = "q")))
+        assertNull(routeInput(paused, AssistantInput("new task")))
+    }
+
     @Test fun `answer is bound to the current question`() {
         val state = OverlayState.from(AgentUiState(running = true, question = Question("q7", "Which pizza?")))
         assertEquals(OverlayMode.WAITING_FOR_USER, state.mode)

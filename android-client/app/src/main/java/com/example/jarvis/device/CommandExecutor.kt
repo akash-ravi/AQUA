@@ -19,6 +19,8 @@ import kotlin.coroutines.resumeWithException
 class CommandExecutor(
     private val service: AccessibilityService,
     private val clock: UiActivityClock,
+    private val beforeScreenshot: suspend () -> Unit = {},
+    private val afterScreenshot: () -> Unit = {},
 ) {
     private val screenReader = ScreenReader(service)
     private val gestures = Gestures(service)
@@ -30,7 +32,14 @@ class CommandExecutor(
             screenReader.read()
         }
         "listApps" -> JSONObject().put("apps", JSONArray(appLauncher.listApps().map(::describeApp)))
-        "screenshot" -> screenshot(args.optInt("maxWidth", DEFAULT_SCREENSHOT_WIDTH))
+        "screenshot" -> {
+            try {
+                beforeScreenshot()
+                screenshot(args.optInt("maxWidth", DEFAULT_SCREENSHOT_WIDTH))
+            } finally {
+                afterScreenshot()
+            }
+        }
         "wait" -> {
             delay(args.optLong("ms").coerceIn(0, MAX_WAIT_MS))
             JSONObject()
