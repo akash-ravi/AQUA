@@ -26,7 +26,6 @@ Desktop.ini
 .venv/
 __pycache__/
 *.pyc
-.pytest_cache/
 *.egg-info/
 
 # Backend runtime data (task notebooks, saved screens, real-phone fixtures)

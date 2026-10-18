@@ -9,7 +9,7 @@ until the task is done with proof on screen. The message format the phone must s
 ```bash
 cd backend
 python3.12 -m venv .venv
-.venv/bin/python -m pip install -e ".[dev]"
+.venv/bin/python -m pip install -e .
 cp .env.example .env          # then put your AI key in .env
 ```
 
@@ -55,15 +55,6 @@ Read what happened in any task: `.venv/bin/python -m jarvis.dev.trace` (last tas
 **For the app's screens** (connection test, history, task details, a Stop button) the same server answers plain HTTP:
 `GET /health`, `GET /status`, `GET /tasks`, `GET /tasks/{id}`, `POST /tasks/{id}/stop`. What the app shows for each
 message, and example JSON for each endpoint, is in PROTOCOL.md sections 11 and 12.
-
-## Tests
-
-```bash
-.venv/bin/python -m pytest -q
-```
-
-The tests drive the real server with stand-ins that live only in `tests/fakes/`: a pretend phone that speaks the
-protocol, a small pretend DoorDash, and a scripted AI. None of them are used when the server runs.
 
 ## How it works
 

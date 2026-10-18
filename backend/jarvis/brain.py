@@ -46,16 +46,16 @@ class TaskEnded(Exception):
         self.proof = proof
 
 
-async def run_task(task: Task, link, ai, notebook: Notebook, limits: Limits | None = None) -> Done | None:
-    return await Brain(task, link, ai, notebook, limits or Limits()).run()
+async def run_task(task: Task, link, ai, notebook: Notebook) -> Done | None:
+    return await Brain(task, link, ai, notebook, Limits()).run()
 
 
-def brain_runner(ai, limits: Limits | None = None):
+def brain_runner(ai):
     async def run(server_run) -> Done | None:
         task = Task(goal=server_run.goal, device_id=server_run.device_id, id=server_run.task_id)
         notebook = Notebook.for_task(server_run.settings.data_dir, task.id)
         notebook.write("task", task_id=task.id, goal=task.goal, device_id=task.device_id, ai=getattr(ai, "name", ""))
-        return await run_task(task, server_run.link, ai, notebook, limits)
+        return await run_task(task, server_run.link, ai, notebook)
     return run
 
 
