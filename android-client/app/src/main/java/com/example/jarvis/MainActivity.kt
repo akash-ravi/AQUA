@@ -1,7 +1,7 @@
 package com.example.jarvis
 
 import android.Manifest
-import android.app.role.RoleManager
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -65,15 +65,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun chooseDefaultAssistant() {
-        val roles = getSystemService(RoleManager::class.java)
-        if (roles.isRoleAvailable(RoleManager.ROLE_ASSISTANT) && !roles.isRoleHeld(RoleManager.ROLE_ASSISTANT)) {
-            assistantRole.launch(roles.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT))
-        } else {
+        // The assistant role is selected through Settings, not a request-role dialog.
+        try {
             startActivity(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS))
+        } catch (_: ActivityNotFoundException) {
+            startActivity(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
         }
     }
-
-    private val assistantRole = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
 
     private fun startTask(task: String) {
         val service = PhoneUseService.instance
