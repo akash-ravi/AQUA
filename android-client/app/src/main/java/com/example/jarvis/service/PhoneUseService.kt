@@ -98,7 +98,9 @@ class PhoneUseService : AccessibilityService() {
 
     override fun onDestroy() {
         instance = null
-        stopTask()
+        // Android suspends this service when another tool takes over accessibility (e.g. adb uiautomator).
+        val reason = "Jarvis's accessibility service was turned off, so the task ended."
+        endTask(reason, TaskOutcome.FAILED) { it.disconnect(reason) }
         overlay?.close()
         overlay = null
         closeAura()
@@ -144,15 +146,17 @@ class PhoneUseService : AccessibilityService() {
         }
     }
 
-    fun stopTask() {
+    fun stopTask() = endTask("Stopped", TaskOutcome.STOPPED) { it.stop() }
+
+    private fun endTask(message: String, outcome: TaskOutcome, close: (AgentSocket) -> Unit) {
         voice?.cancel()
         spokenQuestionId = null
         speechQuestionId = null
         ++taskGeneration
-        socket?.stop()
+        socket?.let(close)
         socket = null
         notification.hide()
-        AgentState.finish(TaskOutcome.STOPPED, "Stopped")
+        AgentState.finish(outcome, message)
     }
 
     fun pauseTask() {

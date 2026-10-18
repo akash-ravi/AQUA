@@ -89,6 +89,12 @@ class AgentSocket(
         finish("Stopped", TaskOutcome.STOPPED)
     }
 
+    // No "stop" frame: the backend must log a lost phone, not a user Stop.
+    fun disconnect(reason: String) {
+        if (finished.get()) return
+        closeWith(reason, TaskOutcome.FAILED)
+    }
+
     fun pause() {
         if (ready.get() && !finished.get() && webSocket?.send(JSONObject().put("type", "pause").toString()) == true) {
             AgentState.requestPause()

@@ -103,9 +103,10 @@ class AuraRing(context: Context, private val level: () -> Float) {
         if (spec.width <= 0 || spec.height <= 0 || spec == masks?.spec || spec == pendingSpec) return@Runnable
         pendingSpec = spec
         val generation = ++maskGeneration
+        val outline = displayOutline()
         // Large blurs take a while in software; building here would stall the entry animation.
         thread(name = "JarvisAuraMask") {
-            val built = Masks.build(spec, density)
+            val built = Masks.build(spec, density, outline)
             view.post {
                 if (generation != maskGeneration) return@post
                 masks = built
@@ -120,7 +121,11 @@ class AuraRing(context: Context, private val level: () -> Float) {
         view.post(buildMasks)
     }
 
-    /** The display reports the panel's true corner radii (API 31+); insets are a fallback, then a default. */
+    // The panel's exact outline (Pixel corners are continuous curves, not the reported circular radius).
+    private fun displayOutline(): Path? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) view.display?.shape?.path else null
+
+    /** Rounded-rect fallback radii for displays without an outline (API 31+); insets are a fallback, then a default. */
     private fun readCorners(insets: WindowInsets) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
         CORNERS.forEachIndexed { index, position ->
@@ -228,13 +233,12 @@ class AuraRing(context: Context, private val level: () -> Float) {
 
     private class Masks(val spec: MaskSpec, val glow: Bitmap, val line: Bitmap) {
         companion object {
-            fun build(spec: MaskSpec, density: Float): Masks {
+            fun build(spec: MaskSpec, density: Float, outline: Path?): Masks {
                 val w = spec.width.toFloat()
                 val h = spec.height.toFloat()
                 val full = RectF(0f, 0f, w, h)
-                fun edge(inset: Float) = Path().apply {
-                    addRoundRect(RectF(inset, inset, w - inset, h - inset),
-                        FloatArray(8) { (spec.radii[it / 2] - inset).coerceAtLeast(0f) }, Path.Direction.CW)
+                val edge = outline?.let { fitted(it, full) } ?: Path().apply {
+                    addRoundRect(full, FloatArray(8) { spec.radii[it / 2] }, Path.Direction.CW)
                 }
                 fun stroke(widthDp: Float, blurDp: Float, strength: Int) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     style = Paint.Style.STROKE
@@ -252,12 +256,12 @@ class AuraRing(context: Context, private val level: () -> Float) {
                 // Every edge, thinning toward the status bar. Centred on the physical edge, so the
                 // outer half is off-glass and the inner half fades inward.
                 canvas.saveLayer(full, null)
-                canvas.drawPath(edge(0f), stroke(GLOW_DP, GLOW_BLUR_DP, 150))
+                canvas.drawPath(edge, stroke(GLOW_DP, GLOW_BLUR_DP, 150))
                 canvas.drawRect(full, fade(0f, TOP_STRENGTH))
                 canvas.restore()
                 // A wider, softer pool and a faint wash in the bottom third.
                 canvas.saveLayer(full, null)
-                canvas.drawPath(edge(0f), stroke(POOL_DP, POOL_BLUR_DP, 170))
+                canvas.drawPath(edge, stroke(POOL_DP, POOL_BLUR_DP, 170))
                 canvas.drawRect(full, Paint().apply { alpha = WASH_STRENGTH })
                 canvas.drawRect(full, fade(h * (1f - POOL_REACH), 0))
                 canvas.restore()
@@ -278,12 +282,18 @@ class AuraRing(context: Context, private val level: () -> Float) {
                 }
 
                 val line = Bitmap.createBitmap(spec.width, spec.height, Bitmap.Config.ALPHA_8)
-                Canvas(line).drawPath(edge(LINE_DP * density / 2f), Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                // A double-width stroke clipped to the glass leaves a line hugging the edge, for any outline shape.
+                Canvas(line).apply { clipPath(edge) }.drawPath(edge, Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     style = Paint.Style.STROKE
-                    strokeWidth = LINE_DP * density
+                    strokeWidth = 2 * LINE_DP * density
                     maskFilter = BlurMaskFilter(density, BlurMaskFilter.Blur.NORMAL)
                 })
                 return Masks(spec, glow, line)
+            }
+
+            private fun fitted(outline: Path, target: RectF): Path {
+                val bounds = RectF().also { outline.computeBounds(it, true) }
+                return Path(outline).apply { transform(Matrix().apply { setRectToRect(bounds, target, Matrix.ScaleToFit.FILL) }) }
             }
         }
     }
