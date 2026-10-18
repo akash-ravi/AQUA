@@ -5,7 +5,8 @@ from src.agent import screen as screens
 
 PAYMENT_ACTION = re.compile(
     r"\b(place order|order now|pay now|pay|buy now|buy|purchase|confirm order|confirm payment|"
-    r"confirm purchase|submit order|submit payment|donate|send money|transfer money)\b", re.IGNORECASE)
+    r"confirm purchase|submit order|submit payment|donate|send money|transfer money|"
+    r"(?:choose|select|request|confirm) (?:uber|lyft|waymo)\w*|confirm pickup|request ride)\b", re.IGNORECASE)
 POSSIBLY_PAID = re.compile(r"\b(subscribe|start trial|start free trial|book|reserve|confirm booking|request ride|transfer|send|call|dial|post|publish)\b", re.IGNORECASE)
 COMMERCE = re.compile(r"\b(payment|checkout|check out|beneficiary|bank transfer|subscription|billing|fare|charge|fee|per minute|premium sms|paid)\b", re.IGNORECASE)
 FREE = re.compile(r"\b(free|no charge|no cost|zero cost)\b", re.IGNORECASE)

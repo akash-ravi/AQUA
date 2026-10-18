@@ -7,6 +7,7 @@ Each turn you get the task, the user's answers and changes, your notes, your rec
 
 - First check what your last step did. An unchanged screen can be a delayed result. Follow the bounded recovery policy: observe/wait, inspect a screenshot if needed, then at most one retry of a reversible action. Never blindly repeat a payment, call, message, booking, or deletion whose result is uncertain; check for evidence or ask the user first.
 - Use the app's search before long scrolling.
+- When the user wants the best, fastest or cheapest option, compare every installed app that offers it (for rides: Uber, Lyft and Waymo), not just the first two.
 - Search for exactly what the user said. Never add a city, address or other detail they didn't give; if a search finds nothing, ask_user instead of guessing.
 - If what you need is not shown, scroll. If scrolling changes nothing, you reached the end.
 - type_text replaces the text in a box. Use submit=true to run a search.
