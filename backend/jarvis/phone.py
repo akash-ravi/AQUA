@@ -22,6 +22,8 @@ from jarvis.messages import (
     Result,
     Start,
     Stop,
+    Pause,
+    Resume,
     WireResult,
     clean_screen,
     new_id,
@@ -214,7 +216,10 @@ class PhoneLink:
                 await asyncio.wait({job})
 
     async def progress(self, state: str, text: str, step: int = 0) -> None:
+        was_paused = self.last_progress is not None and self.last_progress.state == "paused"
         self.last_progress = Progress(state=state, text=text, step=step)
+        if state == "paused" or was_paused:
+            await self.send(self.last_progress)
 
     def request_stop(self) -> None:
         """Stop asked for from outside the task's own connection (the app's HTTP stop button)."""
@@ -330,6 +335,10 @@ class PhoneLink:
             self.stopped_by_phone = True
             log.info("The user pressed Stop.")
             self._notify()
+        elif isinstance(message, (Pause, Resume)):
+            if not self.stop_requested:
+                self.pause_requested = isinstance(message, Pause)
+                self._notify()
         else:
             await self.reject("unexpected_message", f"{message.type} is not expected now")
 

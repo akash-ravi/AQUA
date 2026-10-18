@@ -488,8 +488,10 @@ class Brain:
             await self.progress("paused", "Paused")
             self.notebook.write("status", to="paused", reason="the user paused")
             started = time.monotonic()
-            while self.link.pause_requested and not self.link.stop_requested:
+            while self.link.pause_requested and not self.link.stop_requested and not self.link.gone:
                 await self.link.wait_changed()
+            if self.link.gone:
+                raise PhoneGone()
             self.user_time += time.monotonic() - started
             if self.link.stop_requested:
                 raise TaskEnded("stopped", "Stopped as you asked.")
