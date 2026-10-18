@@ -79,11 +79,27 @@ class CommandExecutor(
     }
 
     private fun setText(args: JSONObject): JSONObject {
+        val node = nodeFrom(args)
+        val submit = args.optBoolean("submit", false)
+        if (submit) node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
         val text = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, args.optString("text"))
         }
-        if (!nodeFrom(args).performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, text)) {
+        if (!node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, text)) {
             throw CommandException("actionFailed", "the field rejected the text")
+        }
+        if (submit) {
+            // ACTION_SET_TEXT only edits the field; it does not invoke the IME's Search/Go action.
+            // Refresh this node after editing instead of resolving an old screen index again.
+            if (!node.refresh() ||
+                !node.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
+            ) {
+                throw CommandException(
+                    "cantSubmit",
+                    "text entered, but the field could not submit; read the screen and use its Search button or a matching suggestion",
+                )
+            }
+            return JSONObject().put("submitted", true)
         }
         return JSONObject()
     }
