@@ -16,20 +16,20 @@ class OverlayStateTest {
         assertEquals(OverlaySubmission.StartTask(longest), routeInput(OverlayState(), AssistantInput(longest)))
     }
 
-    @Test fun `busy input cannot replace a running task`() {
+    @Test fun `busy input is queued instead of replacing a running task`() {
         val state = OverlayState.from(AgentUiState(running = true))
         assertEquals(OverlayMode.PROCESSING, state.mode)
-        assertNull(routeInput(state, AssistantInput("Call someone else")))
+        assertEquals(OverlaySubmission.QueueTask("Call someone else"), routeInput(state, AssistantInput("Call someone else")))
     }
 
-    @Test fun `pause request and acknowledged pause do not accept tasks or answers`() {
+    @Test fun `pause request and acknowledged pause queue tasks but do not accept answers`() {
         val asking = AgentUiState(running = true, question = Question("q", "Place order?"))
         val pausing = OverlayState.from(asking.copy(pauseRequested = true))
         val paused = OverlayState.from(asking.copy(paused = true))
         assertEquals(OverlayMode.PAUSING, pausing.mode)
         assertEquals(OverlayMode.PAUSED, paused.mode)
         assertNull(routeInput(pausing, AssistantInput("yes", questionId = "q")))
-        assertNull(routeInput(paused, AssistantInput("new task")))
+        assertEquals(OverlaySubmission.QueueTask("new task"), routeInput(paused, AssistantInput("new task")))
     }
 
     @Test fun `answer is bound to the current question`() {

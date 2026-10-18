@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass, replace
 from src.agent import checks, safety
 from src.agent import screen as screens
 from src.ai.model import AIError, AIUnavailable, InvalidReply, RateLimited
-from src.phone.messages import Command, Done, SecretTarget
+from src.phone.messages import Command, SecretTarget
 from src.phone.link import Interrupted, PhoneDisconnected, new_command
 from src.agent.screenshots import annotate_screenshot, is_blind, needs_screenshot, picture_to_screen
 from src.agent.prompt import SYSTEM_PROMPT, build_step_message, describe_error, retry_note, status_line
@@ -100,7 +100,8 @@ class Brain:
 
     # ---------- the loop ----------
 
-    async def run(self) -> None:
+    async def run(self) -> TaskEnded | None:
+        """Runs the task to its end; the caller tells the phone. None if the phone disconnected."""
         try:
             await self.screen_out_non_tasks()
             await self.read_screen()
@@ -123,11 +124,13 @@ class Brain:
                 finally:
                     self.record_turn(decision, started, before, steps_before)
         except TaskEnded as end:
-            await self.finish_task(end.outcome, end.summary, end.proof)
+            self.finish_task(end)
+            return end
         except PhoneDisconnected:
             self.notebook.write("status", to="interrupted", reason="the phone disconnected")
             self.save_snapshot()
             log.info("task %s: phone disconnected", self.task.id)
+            return None
         finally:
             self.log_timing()
 
@@ -925,17 +928,13 @@ class Brain:
     def has_committed_action(self) -> bool:
         return any(step.irreversible and step.status in ("ok", "unknown") for step in self.task.steps)
 
-    async def finish_task(self, outcome: str, summary: str, proof: list[str] | None) -> None:
-        if self.task.uncertain_actions and outcome in ("stopped", "failed", "unconfirmed"):
-            summary += " Heads-up: " + "; ".join(self.task.uncertain_actions) + "."
-        done = Done(outcome=outcome, summary=summary[:600])
-        self.notebook.write("done", outcome=outcome, summary=done.summary, proof=proof)
+    def finish_task(self, end: TaskEnded) -> None:
+        if self.task.uncertain_actions and end.outcome in ("stopped", "failed", "unconfirmed"):
+            end.summary += " Heads-up: " + "; ".join(self.task.uncertain_actions) + "."
+        end.summary = end.summary[:600]
+        self.notebook.write("done", outcome=end.outcome, summary=end.summary, proof=end.proof)
         self.save_snapshot()
-        log.info("task %s ended: %s — %s", self.task.id, outcome, done.summary)
-        try:
-            await self.link.finish(done)
-        except PhoneDisconnected:
-            pass
+        log.info("task %s ended: %s — %s", self.task.id, end.outcome, end.summary)
 
     def record_turn(self, decision, started: float, before: Timing, steps_before: int) -> None:
         total = time.monotonic() - started
@@ -1003,7 +1002,7 @@ class Brain:
         first = not steps
         apps_line = ", ".join(sorted(self.link.apps.values())) if first or self.last_open_app_failed() else None
         return build_step_message(
-            goal=self.task.goal, corrections=self.task.corrections, answers=self.task.answers,
+            goal=self.task.goal, earlier=self.task.earlier, corrections=self.task.corrections, answers=self.task.answers,
             completed_irreversible=self.task.completed_irreversible, uncertain_actions=self.task.uncertain_actions, notes=self.task.notes,
             apps_line=apps_line, screens_seen=self.task.screens_seen, steps=steps[-8:],
             total_steps=len(steps), step_limit=self.step_limit, warnings=self.drain_warnings(),

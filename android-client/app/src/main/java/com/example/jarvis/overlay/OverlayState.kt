@@ -18,8 +18,6 @@ data class OverlayState(
     val message: String? = null,
     val status: String? = null,
 ) {
-    val acceptsInput: Boolean get() = mode == OverlayMode.IDLE || mode == OverlayMode.WAITING_FOR_USER
-
     companion object {
         fun from(agent: AgentUiState) = when {
             agent.running && agent.pauseRequested -> OverlayState(OverlayMode.PAUSING, message = agent.message)
@@ -35,17 +33,18 @@ data class OverlayState(
 
 sealed interface OverlaySubmission {
     data class StartTask(val text: String) : OverlaySubmission
+    data class QueueTask(val text: String) : OverlaySubmission
     data class Answer(val questionId: String, val text: String, val voice: Boolean = false) : OverlaySubmission
 }
 
-/** Reject busy submissions and answers drafted for a different question. */
+/** New tasks while busy are queued; answers drafted for a different question are rejected. */
 fun routeInput(state: OverlayState, input: AssistantInput): OverlaySubmission? {
     val text = input.text.trim()
-    if (text.isEmpty() || text.length > MAX_INPUT_CHARS || !state.acceptsInput) return null
+    if (text.isEmpty() || text.length > MAX_INPUT_CHARS) return null
     if (input.questionId != state.questionId) return null
     return when (state.mode) {
         OverlayMode.IDLE -> OverlaySubmission.StartTask(text)
         OverlayMode.WAITING_FOR_USER -> state.questionId?.let { OverlaySubmission.Answer(it, text, input.voice) }
-        OverlayMode.PROCESSING, OverlayMode.PAUSING, OverlayMode.PAUSED -> null
+        OverlayMode.PROCESSING, OverlayMode.PAUSING, OverlayMode.PAUSED -> OverlaySubmission.QueueTask(text)
     }
 }

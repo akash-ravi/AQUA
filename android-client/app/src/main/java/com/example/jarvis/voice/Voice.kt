@@ -69,6 +69,8 @@ class Voice(
         listener.prefetch()
     }
 
+    val speaking: Boolean get() = turn.speaking
+
     fun cancel() = turn.cancel()
 
     fun close() {

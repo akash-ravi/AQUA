@@ -33,6 +33,7 @@ class Step:
 class Task:
     goal: str
     id: str
+    earlier: list[str] = field(default_factory=list)
     corrections: list[str] = field(default_factory=list)
     answers: list[tuple[str, str]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)

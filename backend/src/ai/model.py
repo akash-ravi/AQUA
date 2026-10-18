@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import logging
+import re
 import time
 from dataclasses import dataclass
 
@@ -22,6 +23,12 @@ CHAT_PROMPT = ("You are Jarvis, a voice assistant that can also operate the user
                "laid-back friend texting back: lowercase vibe, a few words, slang is fine, never formal, never "
                "eager, no lists or markdown. \"yo what's up\" not \"Hello! How can I help you today?\". "
                "If it makes no sense, just go \"huh? say that again\".")
+SPLIT_PROMPT = ("Split the user's spoken phone request into the separate tasks it asks for, in order. One goal stays "
+                "one task: \"order a pizza and fries\" is one task; \"text Sam I'm late, then set a 7am alarm\" is two. "
+                "Keep the user's wording and details. Reply with one task per line and nothing else.")
+MAX_CHAIN_PARTS = 5
+CHAIN_WORDS = re.compile(r"\b(and|then|also|after|afterwards|plus)\b|[,;]", re.IGNORECASE)
+LIST_MARKER = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s*")
 
 
 @dataclass
@@ -134,28 +141,32 @@ class AI:
     async def approves(self, question: str, reply: str) -> bool:
         if self.jev:
             return await self.jev.approves(question, reply)
-        try:
-            response = await self.client.beta.messages.create(
-                model=self.model,
-                max_tokens=2000,
-                system=APPROVAL_PROMPT,
-                messages=[{"role": "user", "content": f"Question: {question}\nReply: {reply}"}],
-                output_config={"effort": "low"},
-                betas=["server-side-fallback-2026-07-01"],
-                fallbacks="default",
-            )
-        except anthropic.APIError as error:
-            raise _to_ai_error(error)
-        text = "".join(block.text for block in response.content if block.type == "text")
-        return text.strip().upper().startswith("APPROVE")
+        text = await self.quick_text(APPROVAL_PROMPT, f"Question: {question}\nReply: {reply}")
+        return text.upper().startswith("APPROVE")
 
     async def chat(self, said: str) -> str:
+        return await self.quick_text(CHAT_PROMPT, said)
+
+    async def split_tasks(self, request: str) -> list[str]:
+        """The request's tasks in order; any doubt or error keeps it whole."""
+        if not CHAIN_WORDS.search(request):
+            return [request]
+        try:
+            text = await self.quick_text(SPLIT_PROMPT, request)
+        except AIError as error:
+            log.info("Could not split the request: %s", error.message)
+            return [request]
+        parts = [LIST_MARKER.sub("", line).strip() for line in text.splitlines()]
+        parts = [part for part in parts if part]
+        return parts if 0 < len(parts) <= MAX_CHAIN_PARTS else [request]
+
+    async def quick_text(self, system: str, content: str) -> str:
         try:
             response = await self.client.beta.messages.create(
                 model=self.model,
                 max_tokens=2000,
-                system=CHAT_PROMPT,
-                messages=[{"role": "user", "content": said}],
+                system=system,
+                messages=[{"role": "user", "content": content}],
                 output_config={"effort": "low"},
                 betas=["server-side-fallback-2026-07-01"],
                 fallbacks="default",

@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import time
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
@@ -12,11 +14,13 @@ from src.ai.elevenlabs import TOKEN_TYPES, ElevenLabs
 from src.ai.model import AI
 from src.config import Settings
 from src.phone.link import PhoneDisconnected, PhoneLink
-from src.phone.messages import new_id
+from src.phone.messages import Done, new_id
 
 log = logging.getLogger("jarvis.server")
 
 START_SECONDS = 10.0
+FOLLOW_UP_SECONDS = 600
+MAX_HISTORY = 5
 
 
 def create_app(settings: Settings, ai: AI) -> FastAPI:
@@ -48,6 +52,9 @@ def create_app(settings: Settings, ai: AI) -> FastAPI:
             raise HTTPException(502, "ElevenLabs refused the token request")
         return {"token": token, "voice_id": settings.voice_id} if kind == "speak" else {"token": token}
 
+    # shortcut: in memory and keyed by phone IP, so a restart or a new IP forgets follow-up context.
+    histories: defaultdict[str, deque[tuple[float, str]]] = defaultdict(lambda: deque(maxlen=MAX_HISTORY))
+
     @app.websocket("/agent")
     async def agent(websocket: WebSocket) -> None:
         # Browsers always send Origin; the phone app never does, so this keeps web pages out.
@@ -57,8 +64,9 @@ def create_app(settings: Settings, ai: AI) -> FastAPI:
             return
         await websocket.accept()
         link = PhoneLink(websocket)
+        device_id = websocket.client.host if websocket.client else ""
         try:
-            await handle_phone(link, settings, ai, websocket.client.host if websocket.client else "")
+            await handle_phone(link, settings, ai, device_id, histories[device_id])
         except PhoneDisconnected:
             log.info("The phone disconnected.")
         finally:
@@ -67,24 +75,47 @@ def create_app(settings: Settings, ai: AI) -> FastAPI:
     return app
 
 
-async def handle_phone(link: PhoneLink, settings: Settings, ai: AI, device_id: str) -> None:
+async def handle_phone(link: PhoneLink, settings: Settings, ai: AI, device_id: str,
+                       history: deque[tuple[float, str]]) -> None:
     start = await wait_for_start(link)
     if start is None:
         return
 
-    task = Task(goal=start.task, id=new_id("t"))
-    log.info("New task %s from %s.", task.id, device_id)
+    log.info("New request from %s: %s", device_id, start.task)
     try:
         link.start(start)
-        await link.load_apps()
-        notebook = Notebook(settings.data_dir, task.id)
-        notebook.write("task", task_id=task.id, goal=task.goal, device_id=device_id, ai=ai.name)
-        await Brain(task, link, ai, notebook).run()
+        parts, _ = await asyncio.gather(ai.split_tasks(start.task), link.load_apps())
+        await run_chain(parts, link, settings, ai, device_id, history)
     except PhoneDisconnected:
-        log.info("Task %s: the phone disconnected.", task.id)
+        log.info("The phone disconnected.")
     except Exception:
-        log.exception("Task %s crashed.", task.id)
+        log.exception("The request crashed: %s", start.task)
         await link.fail("Something went wrong on the Mac.")
+
+
+async def run_chain(parts: list[str], link: PhoneLink, settings: Settings, ai: AI, device_id: str,
+                    history: deque[tuple[float, str]]) -> None:
+    """Runs each part in order and stops the chain at the first part that doesn't complete."""
+    summaries = []
+    for n, goal in enumerate(parts):
+        while history and time.monotonic() - history[0][0] > FOLLOW_UP_SECONDS:
+            history.popleft()
+        task = Task(goal=goal, id=new_id("t"), earlier=[line for _, line in history])
+        log.info("Task %s (%d of %d): %s", task.id, n + 1, len(parts), goal)
+        notebook = Notebook(settings.data_dir, task.id)
+        notebook.write("task", task_id=task.id, goal=goal, chain=parts, device_id=device_id, ai=ai.name)
+        if n:
+            await link.progress("running", f"Next: {goal}", 0)
+        end = await Brain(task, link, ai, notebook).run()
+        if end is None:
+            return
+        history.append((time.monotonic(), f"{goal} → {end.outcome}: {end.summary}"))
+        summaries.append(end.summary)
+        if end.outcome != "completed":
+            break
+    skipped = parts[n + 1:]
+    summary = " ".join(summaries) + (f" Didn't get to: {'; '.join(skipped)}." if skipped else "")
+    await link.finish(Done(outcome=end.outcome, summary=summary[:600]))
 
 
 async def wait_for_start(link: PhoneLink):

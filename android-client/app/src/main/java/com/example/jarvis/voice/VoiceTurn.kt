@@ -26,6 +26,8 @@ internal class VoiceTurn(
     private var userSpeaking = false
     private var closed = false
 
+    val speaking: Boolean get() = playback != null
+
     /** An explicit mic tap interrupts playback, including on devices without AEC. */
     fun listen(): Boolean {
         if (closed || !canListen()) return false

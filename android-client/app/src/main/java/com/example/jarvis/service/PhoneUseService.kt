@@ -53,6 +53,8 @@ class PhoneUseService : AccessibilityService() {
     private var overlayVisible = false
     private var captureHidden = false
     private var taskGeneration = 0
+    private var awaitingFollowUp = false
+    private val queuedTasks = ArrayDeque<String>()
 
     private val stopReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -117,7 +119,8 @@ class PhoneUseService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     fun startTask(task: String): Boolean {
-        stopTask()
+        awaitingFollowUp = false
+        endTask("Stopped", TaskOutcome.STOPPED) { it.stop() }
         AgentState.begin(task)
         val generation = ++taskGeneration
         return try {
@@ -146,7 +149,10 @@ class PhoneUseService : AccessibilityService() {
         }
     }
 
-    fun stopTask() = endTask("Stopped", TaskOutcome.STOPPED) { it.stop() }
+    fun stopTask() {
+        queuedTasks.clear()
+        endTask("Stopped", TaskOutcome.STOPPED) { it.stop() }
+    }
 
     private fun endTask(message: String, outcome: TaskOutcome, close: (AgentSocket) -> Unit) {
         voice?.cancel()
@@ -179,6 +185,7 @@ class PhoneUseService : AccessibilityService() {
     }
 
     fun hideOverlay() {
+        awaitingFollowUp = false
         voice?.cancel()
         overlayVisible = false
         overlay?.dismiss()
@@ -232,15 +239,22 @@ class PhoneUseService : AccessibilityService() {
     private fun submitOverlayInput(input: AssistantInput): Boolean {
         return when (val submission = routeInput(OverlayState.from(AgentState.state.value), input)) {
             is OverlaySubmission.StartTask -> startTask(submission.text)
+            is OverlaySubmission.QueueTask -> queueTask(submission.text)
             is OverlaySubmission.Answer -> answerQuestion(submission.questionId, submission.text, submission.voice)
             null -> false
         }
     }
 
+    private fun queueTask(task: String): Boolean {
+        queuedTasks.addLast(task)
+        AgentState.log("queued (${queuedTasks.size}): $task")
+        overlay?.collapse()
+        voice?.speak("Got it, that's next.")
+        return true
+    }
+
     private fun listen(): Boolean {
-        val state = OverlayState.from(AgentState.state.value)
-        if (!state.acceptsInput) return false
-        speechQuestionId = state.questionId
+        speechQuestionId = OverlayState.from(AgentState.state.value).questionId
         return voice?.listen() == true
     }
 
@@ -253,6 +267,10 @@ class PhoneUseService : AccessibilityService() {
         listening = value
         overlay?.setListening(value)
         updateAura()
+        // Launched so a heard follow-up starts its task (clearing the flag) before this runs.
+        if (!value) scope.launch {
+            if (awaitingFollowUp && !listening && voice?.speaking != true && overlay?.expanded != true) hideOverlay()
+        }
     }
 
     private fun submitSpeech(text: String) {
@@ -270,7 +288,16 @@ class PhoneUseService : AccessibilityService() {
             socket = null
             notification.hide()
             AgentState.finish(outcome, message)
-            if (outcome.dismissOverlay) {
+            val next = queuedTasks.removeFirstOrNull()
+            if (next != null) {
+                // startTask cancels voice, so the summary is spoken once the next task is under way.
+                startTask(next)
+                voice?.speak(message)
+                return@launch
+            }
+            if (outcome == TaskOutcome.COMPLETED) {
+                awaitingFollowUp = overlayVisible
+            } else if (outcome.dismissOverlay) {
                 hideOverlay()
             } else if (overlayVisible) {
                 // Errors must remain visible instead of making the app appear to close.

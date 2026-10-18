@@ -42,7 +42,8 @@ class AgentOverlay(
     private val keyboard = context.getSystemService(InputMethodManager::class.java)
     private val accent = BrandColors.Orange.toInt()
     private var state = OverlayState()
-    private var expanded = false
+    var expanded = false
+        private set
     private var attached = false
     private var dismissing = false
     private var listening = false
@@ -219,6 +220,7 @@ class AgentOverlay(
         prompt.text = next.question ?: next.message ?: "How can I help?"
         input.hint = when {
             listening -> "Listening… or type"
+            next.mode != OverlayMode.IDLE && next.questionId == null -> "Queue another task"
             next.questionId == null -> "What should Jarvis do?"
             else -> "Your answer"
         }
@@ -231,7 +233,7 @@ class AgentOverlay(
         title.visibility = if (expanded) View.VISIBLE else View.GONE
         hide.visibility = if (expanded) View.VISIBLE else View.GONE
         promptScroll.visibility = if (expanded) View.VISIBLE else View.GONE
-        composer.visibility = if (expanded && next.acceptsInput) View.VISIBLE else View.GONE
+        composer.visibility = if (expanded) View.VISIBLE else View.GONE
         updateWindow()
     }
 
@@ -265,7 +267,8 @@ class AgentOverlay(
         val opening = value && !expanded
         expanded = value
         render(state)
-        if (value && state.acceptsInput) input.requestFocus()
+        // While busy the panel is mostly for Pause/Stop, so the keyboard waits for a tap on the box.
+        if (value && (state.mode == OverlayMode.IDLE || state.mode == OverlayMode.WAITING_FOR_USER)) input.requestFocus()
         // The orb grows into the panel rather than cutting to it.
         if (opening && attached && !dismissing) {
             root.scaleX = OPEN_SCALE
@@ -275,9 +278,8 @@ class AgentOverlay(
     }
 
     private fun updateWindow() {
-        val editing = expanded && state.acceptsInput
         params.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-            (if (editing) 0 else WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+            (if (expanded) 0 else WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
         // Collapsed, the window is just the orb, so it neither covers nor intercepts the app behind it.
         root.background = if (expanded) panelBackground else null
         root.elevation = if (expanded) dp(12).toFloat() else 0f
@@ -294,7 +296,7 @@ class AgentOverlay(
         val available = windows.currentWindowMetrics.bounds.width() - dp(32)
         params.width = if (expanded) minOf(dp(400), available.coerceAtLeast(dp(120)))
             else WindowManager.LayoutParams.WRAP_CONTENT
-        if (!editing) {
+        if (!expanded) {
             keyboard.hideSoftInputFromWindow(input.windowToken, 0)
             input.clearFocus()
         }
@@ -302,7 +304,7 @@ class AgentOverlay(
     }
 
     private fun submit() {
-        if (!state.acceptsInput || input.text.isBlank()) return
+        if (input.text.isBlank()) return
         // Capture input before closing focus; the service rechecks current task/question state.
         val event = AssistantInput(input.text.toString(), questionId = state.questionId)
         collapse()

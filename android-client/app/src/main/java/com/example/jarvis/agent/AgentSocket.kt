@@ -188,7 +188,7 @@ class AgentSocket(
     }
 
     companion object {
-        private const val MAX_COMMANDS = 100
+        private const val MAX_COMMANDS = 400 // one connection can run a chain of up to 5 tasks
         private const val NORMAL_CLOSE = 1000
         private const val PING_INTERVAL_SECONDS = 20L
     }
