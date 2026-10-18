@@ -25,6 +25,8 @@ MAX_WORK_MINUTES = 15
 MAX_CONSECUTIVE_INVALID_REPLIES = 3
 MAX_INVALID_REPLIES = 8
 MAX_WAIT_SECONDS = 90
+EMPTY_SCREEN_REREADS = 2
+EMPTY_SCREEN_WAIT_SECONDS = 1.5
 QUESTION_EXPIRES = 600
 CONFIRM_EXPIRES = 120
 RATE_LIMIT_WAITS = (5, 10, 20)
@@ -83,6 +85,7 @@ class Brain:
         self.screenshotted_screens: set[str] = set()
         self.screenshots_taken = 0
         self.screenshot_requested = False
+        self.unreadable_screens: set[str] = set()
         self.step_limit = MAX_STEPS
         self.model_call_limit = MAX_MODEL_CALLS
         self.help_asks = 0
@@ -102,6 +105,7 @@ class Brain:
                 started, before, steps_before, decision = time.monotonic(), replace(self.timing), len(self.task.steps), None
                 try:
                     self.check_budgets()
+                    await self.wait_for_readable_screen()
                     await self.capture_screenshot_if_needed()
                     decision = await self.decide_next_action()
                     if decision is not None:
@@ -208,7 +212,7 @@ class Brain:
         elif tool == "wait":
             await self.handle_wait(args, why)
         elif tool == "look":
-            await self.capture_screenshot(why)
+            await self.handle_look(why)
         elif tool == "ask_user":
             await self.handle_ask_user(args)
         elif tool == "confirm_and_tap":
@@ -276,6 +280,22 @@ class Brain:
             self.task.typed_texts.append(args.get("text", ""))
         return result is not None
 
+    async def wait_for_readable_screen(self) -> None:
+        for _ in range(EMPTY_SCREEN_REREADS):
+            if self.view.by_index:
+                return
+            if not await self.sleep_interruptibly(EMPTY_SCREEN_WAIT_SECONDS):
+                return
+            await self.read_screen()
+        if self.view.by_index:
+            return
+        if self.view.signature in self.unreadable_screens:
+            self.warnings.append("Nothing on this screen can be read or tapped. Use go_back, go_home, open_app or give_up.")
+            return
+        self.unreadable_screens.add(self.view.signature)
+        raise Stuck("I can't read anything on this screen", self.failure_outcome(),
+                    f"I couldn't read the screen. {self.last_tried()}".strip())
+
     async def capture_screenshot_if_needed(self) -> None:
         if self.view.signature in self.screenshotted_screens:
             return
@@ -283,18 +303,25 @@ class Brain:
             self.screenshot_requested = False
             await self.capture_screenshot("Looking at the screen")
 
-    async def capture_screenshot(self, why: str) -> None:
+    async def handle_look(self, why: str) -> None:
+        before = self.view
+        step = self.start_step("look", None, "", why)
+        step.status = "ok"
+        step.change = "picture attached" if await self.capture_screenshot(why) else "no change: no new picture"
+        self.record_step_outcome(step, before)
+
+    async def capture_screenshot(self, why: str) -> bool:
         if self.view.signature in self.screenshotted_screens:
             self.warnings.append("You already have the picture of this screen.")
-            return
+            return False
         if self.screenshots_taken >= MAX_SCREENSHOTS:
             self.warnings.append("No more pictures for this task; use the screen text.")
-            return
+            return False
         self.screenshotted_screens.add(self.view.signature)
         self.screenshots_taken += 1
         result = await self.send(new_command("screenshot", max_side=1280), None)
         if result is None:
-            return
+            return False
         if result.status != "ok" or result.image is None:
             code = result.error.code if result.error else ""
             if code == "screenshot_blocked":
@@ -302,16 +329,17 @@ class Brain:
                                      "if needed.")
             else:
                 self.warnings.append("The picture could not be taken; use the screen text.")
-            return
+            return False
         started = time.monotonic()
         marked = annotate_screenshot(result.image, self.view)  # send() already switched to the screen the picture shows
         log.debug("annotated the screenshot in %d ms", (time.monotonic() - started) * 1000)
         if isinstance(marked, str):
             self.warnings.append(f"The picture was unusable ({marked}); use the screen text.")
-            return
+            return False
         self.screenshot = (self.view.signature, marked)
         self.screenshotted_screens.add(self.view.signature)
         self.notebook.write("screenshot", signature=self.view.signature, bytes=len(marked), why=why)
+        return True
 
     async def handle_wait(self, args: dict, why: str) -> None:
         before = self.view
@@ -356,6 +384,8 @@ class Brain:
         if outcome is None:
             step.status = "cancelled"
             return
+        if outcome.status == "text" and await self.reply_approves(plan.text, outcome.text):
+            outcome = replace(outcome, status="approved")
         if outcome.status in ("expired", "declined"):
             step.status, step.change = "declined", "the user said no; nothing was tapped"
             self.task.answers.append((f"Approve: {args['summary']}", "No"))
@@ -384,6 +414,22 @@ class Brain:
         elif result.status == "unknown":
             self.task.uncertain_actions.append(f'tapped "{plan.label}" but the result was lost')
         self.record_step_outcome(step, before)
+
+    async def reply_approves(self, question: str, reply: str) -> bool:
+        """Lets the AI judge a free-form reply like "Yes, send it"; any doubt or error means not approved."""
+        started = time.monotonic()
+        approved = False
+        try:
+            approved = await self.link.run_interruptible(self.ai.approves(question, reply))
+        except PhoneDisconnected:
+            raise
+        except (Interrupted, AIError) as error:
+            log.info("task %s: approval check failed: %s", self.task.id, getattr(error, "message", "") or type(error).__name__)
+        finally:
+            self.timing.ai += time.monotonic() - started
+            self.timing.ai_calls += 1
+            self.notebook.write("approval_check", reply=safety.hide_secrets(reply, question), approved=approved)
+        return approved
 
     async def ask_for_help(self, stuck: Stuck) -> None:
         """Ask the user how to get unstuck. Their answer steers the next steps; Stop or silence ends the task."""
@@ -427,7 +473,7 @@ class Brain:
         return status_line(tool, why, label, args.get("direction"))
 
     async def handle_finish(self, args: dict) -> None:
-        await self.read_screen()
+        # Check the screen the AI saw; re-reading loses short-lived proof like a "Sent · Undo" snackbar.
         committed = [step for step in self.task.steps if step.irreversible]
         problem = checks.check_finish(
             args, self.view, goal=self.task.goal, corrections=self.task.corrections, typed=self.task.typed_texts,

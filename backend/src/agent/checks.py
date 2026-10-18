@@ -37,8 +37,15 @@ def check_decision(tool: str, args: dict, view, apps: dict[str, str], no_effect_
             else:
                 return f"[{node.index}] is not a text box"
 
-    if tool == "scroll" and args.get("target") is not None:
-        args["target"] = _scrollable_ancestor(view, args["target"])
+    if tool == "scroll":
+        target = args.get("target")
+        if target is None:
+            args["target"] = _main_list(view)
+            if args["target"] is None:
+                return "nothing on this screen scrolls"
+        else:
+            ancestor = _scrollable_ancestor(view, target)
+            args["target"] = target if ancestor is None else ancestor  # the phone finds the list above the item itself
 
     if tool == "open_app":
         found = find_app(args.get("name", ""), apps)
@@ -55,7 +62,7 @@ def check_decision(tool: str, args: dict, view, apps: dict[str, str], no_effect_
         label = view.by_index[args["target"]].label if args["target"] in view.by_index else ""
         if (tool, label, view.signature) in no_effect_actions:
             return "already tried; nothing happened. Try something different"
-    elif (tool, "", view.signature) in no_effect_actions and tool in {"go_back", "scroll"}:
+    elif (tool, "", view.signature) in no_effect_actions and tool in {"go_back", "scroll", "look"}:
         return "already tried; nothing happened. Try something different"
     return args, note
 
@@ -121,6 +128,15 @@ def _word_overlap(a: str, b: str) -> float:
         return 0.0
     other = set(b.split())
     return sum(word in other for word in words) / len(words)
+
+
+def _main_list(view) -> int | None:
+    def area(node) -> int:
+        left, top, right, bottom = node.bounds
+        return (right - left) * (bottom - top)
+
+    lists = [node for node in view.screen.nodes if node.scrollable]
+    return max(lists, key=area).index if lists else None
 
 
 def _scrollable_ancestor(view, index: int) -> int | None:

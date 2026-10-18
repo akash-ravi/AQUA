@@ -10,6 +10,10 @@ from src.ai.tools import TOOLS, tool_schemas
 
 log = logging.getLogger("jarvis.llm")
 
+APPROVAL_PROMPT = ("The user was asked to approve an action that can't be undone. Their spoken reply may be "
+                   "misheard. Answer APPROVE only if the reply clearly says yes to exactly this action, with no "
+                   "changes or conditions. Otherwise answer NO. Answer with one word.")
+
 
 @dataclass
 class Decision:
@@ -98,6 +102,22 @@ class AI:
         tool, args = normalize_tool_call(call.name, call.input)
         return Decision(tool=tool, args=args, text=text, model=response.model, ms=ms, input_tokens=input_tokens,
                         cached_tokens=cached, output_tokens=usage.output_tokens)
+
+    async def approves(self, question: str, reply: str) -> bool:
+        try:
+            response = await self.client.beta.messages.create(
+                model=self.model,
+                max_tokens=2000,
+                system=APPROVAL_PROMPT,
+                messages=[{"role": "user", "content": f"Question: {question}\nReply: {reply}"}],
+                output_config={"effort": "low"},
+                betas=["server-side-fallback-2026-07-01"],
+                fallbacks="default",
+            )
+        except anthropic.APIError as error:
+            raise _to_ai_error(error)
+        text = "".join(block.text for block in response.content if block.type == "text")
+        return text.strip().upper().startswith("APPROVE")
 
 
 def normalize_tool_call(tool: str, args: dict) -> tuple[str, dict]:

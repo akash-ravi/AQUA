@@ -319,8 +319,9 @@ def format_question(text: str, choices: list[str] | None) -> str:
 
 def _to_outcome(ask_id: str, kind: str, answer: Answer) -> AskOutcome:
     reply = (answer.text or "").strip()
-    if kind == "confirm" and reply.casefold() in APPROVE_WORDS:
+    spoken = reply.casefold().strip(" .,!?")  # speech-to-text adds punctuation: "Yes."
+    if kind == "confirm" and spoken in APPROVE_WORDS:
         return AskOutcome("approved", ask_id)
-    if kind == "confirm" and reply.casefold() in DECLINE_WORDS | {""}:
+    if kind == "confirm" and spoken in DECLINE_WORDS | {""}:
         return AskOutcome("declined", ask_id)
     return AskOutcome("text", ask_id, text=reply)

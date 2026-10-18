@@ -98,7 +98,7 @@ class SpeechModels(context: Context) {
 
     companion object {
         const val SAMPLE_RATE = 16000
-        const val END_OF_SPEECH_SECONDS = 0.6f
+        const val END_OF_SPEECH_SECONDS = 1.0f
         const val MAX_UTTERANCE_SECONDS = 20f
         private const val LOAD_TIMEOUT_SECONDS = 30L
         private const val MOONSHINE = "moonshine"
