@@ -5,39 +5,49 @@ import android.graphics.BlendMode
 import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.os.SystemClock
 import android.view.View
 import com.example.jarvis.ui.BrandColors
+import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * Siri-like orb: three warm, additive blobs orbit each other and swell with the voice level.
- * Animates only while attached and visible, so a hidden panel costs no frames.
+ * Siri / ChatGPT-voice style orb: a glassy sphere filled with drifting warm light, inside a soft halo.
+ * Its outline ripples and swells with the voice level. Animates only while attached and visible.
  */
 class OrbView(context: Context, private val level: () -> Float) : View(context) {
     private class Blob(color: Long, val phase: Float, val speed: Float, val wobble: Float) {
         val shader = RadialGradient(0f, 0f, 1f,
-            intArrayOf(color.toInt(), (color and 0x00FFFFFFL or 0x66000000L).toInt(), 0),
-            floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+            intArrayOf(color.toInt(), (color and 0x00FFFFFFL or 0x88000000L).toInt(), 0),
+            floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
         var angle = phase
     }
 
     private val blobs = listOf(
-        Blob(BrandColors.Orange, 0f, 1.0f, 1.3f),
-        Blob(BrandColors.Red, 2.1f, 1.35f, 0.9f),
-        Blob(BrandColors.Amber, 4.2f, 0.8f, 1.7f),
+        Blob(BrandColors.Orange, 0f, 0.9f, 1.3f),
+        Blob(BrandColors.Red, 2.1f, 1.2f, 0.8f),
+        Blob(BrandColors.Amber, 4.2f, 0.7f, 1.6f),
     )
-    private val core = RadialGradient(0f, 0f, 1f,
-        intArrayOf(BrandColors.Text.toInt(), (BrandColors.Amber and 0x00FFFFFFL or 0x55000000L).toInt(), 0),
-        floatArrayOf(0f, 0.4f, 1f), Shader.TileMode.CLAMP)
+    private val halo = radial(0f to tint(BrandColors.Orange, 0x99), 0.55f to tint(BrandColors.Red, 0x40), 1f to 0)
+    private val depth = radial(0f to 0xFF3A1410.toInt(), 1f to 0xFF120806.toInt())
+    private val core = radial(0f to BrandColors.Text.toInt(), 0.4f to tint(BrandColors.Amber, 0x66), 1f to 0)
+    private val shine = radial(0f to 0x88FFFFFF.toInt(), 1f to 0)
     private val placement = Matrix()
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = BlendMode.PLUS }
+    private val outline = Path()
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val mask = Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = BlendMode.DST_IN }
+    private val rim = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = tint(BrandColors.Amber, 0x99)
+    }
     private var animating = false
     private var smoothed = 0f
+    private var time = 0f
     private var lastFrame = 0L
 
     var mode = OverlayMode.IDLE
@@ -66,28 +76,67 @@ class OrbView(context: Context, private val level: () -> Float) : View(context) 
             else -> 0.3f
         } + smoothed * 0.6f
         val speed = (if (calm) 0.3f else if (mode == OverlayMode.PROCESSING) 1.6f else 1f) + smoothed * 2f
+        time += dt * speed
         val cx = width / 2f
         val cy = height / 2f
-        // Largest blob extent is ~1.47r, so this keeps the orb inside its bounds.
-        val r = min(cx, cy) * 0.66f
-        paint.alpha = if (calm) 150 else 255
+        val half = min(cx, cy)
+        // Worst case outline reaches ~0.85 of half, leaving the rest for the halo.
+        val r = half * 0.7f * (1f + 0.07f * smoothed)
+
+        paint.blendMode = null
+        paint.alpha = ((if (calm) 0.35f else 0.55f + 0.45f * smoothed) * 255).toInt()
+        fill(canvas, halo, cx, cy, half)
+
+        traceOutline(cx, cy, r, 0.012f + 0.03f * energy + 0.06f * smoothed)
+        val layer = canvas.saveLayerAlpha(0f, 0f, width.toFloat(), height.toFloat(), if (calm) 170 else 255)
+        paint.alpha = 255
+        fill(canvas, depth, cx, cy, r)
+        paint.blendMode = BlendMode.PLUS
         for (blob in blobs) {
             blob.angle += dt * blob.speed * speed
-            val offset = r * 0.28f * energy
+            val offset = r * (0.25f + 0.3f * energy)
             val x = cx + cos(blob.angle) * offset
             val y = cy + sin(blob.angle * blob.wobble) * offset
-            val radius = r * (0.78f + 0.12f * sin(blob.angle * 1.7f) + 0.25f * smoothed)
-            drawGlow(canvas, blob.shader, x, y, radius)
+            fill(canvas, blob.shader, x, y, r * (0.85f + 0.1f * sin(blob.angle * 1.7f)))
         }
-        drawGlow(canvas, core, cx, cy, r * (0.45f + 0.2f * smoothed))
+        fill(canvas, core, cx, cy, r * (0.4f + 0.3f * smoothed))
+        paint.blendMode = null
+        fill(canvas, shine, cx - r * 0.35f, cy - r * 0.4f, r * 0.45f)
+        canvas.drawPath(outline, mask)
+        canvas.restoreToCount(layer)
+
+        rim.strokeWidth = r * 0.04f
+        canvas.drawPath(outline, rim)
         if (animating) postInvalidateOnAnimation()
     }
 
-    private fun drawGlow(canvas: Canvas, shader: Shader, x: Float, y: Float, radius: Float) {
+    /** Two travelling ripples around the edge, so the sphere looks liquid rather than bouncy. */
+    private fun traceOutline(cx: Float, cy: Float, r: Float, ripple: Float) {
+        outline.rewind()
+        for (i in 0..POINTS) {
+            val theta = i * 2f * PI.toFloat() / POINTS
+            val radius = r * (1f + ripple * (0.6f * sin(3 * theta + time * 1.3f) + 0.4f * sin(5 * theta - time * 1.9f)))
+            val x = cx + cos(theta) * radius
+            val y = cy + sin(theta) * radius
+            if (i == 0) outline.moveTo(x, y) else outline.lineTo(x, y)
+        }
+        outline.close()
+    }
+
+    private fun fill(canvas: Canvas, shader: Shader, x: Float, y: Float, radius: Float) {
         placement.setScale(radius, radius)
         placement.postTranslate(x, y)
         shader.setLocalMatrix(placement)
         paint.shader = shader
         canvas.drawCircle(x, y, radius, paint)
+    }
+
+    private companion object {
+        const val POINTS = 96
+
+        fun tint(color: Long, alpha: Int) = (color and 0x00FFFFFFL).toInt() or (alpha shl 24)
+
+        fun radial(vararg stops: Pair<Float, Int>) = RadialGradient(0f, 0f, 1f,
+            stops.map { it.second }.toIntArray(), stops.map { it.first }.toFloatArray(), Shader.TileMode.CLAMP)
     }
 }

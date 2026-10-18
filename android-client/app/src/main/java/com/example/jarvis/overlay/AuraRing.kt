@@ -11,7 +11,6 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
-import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.SweepGradient
@@ -27,15 +26,14 @@ import kotlin.concurrent.thread
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
  * Display-sized, non-interactive window, independent of the panel and keyboard bounds.
  *
  * Gemini-style invocation: a thin line lights every edge at once, then a soft glow blooms in
- * from the bezel, pooling at the bottom over a halftone dot field while light blobs drift along
- * the sides. Dismissal retracts the glow back out through the top and sides, bottom last.
+ * from the bezel, pooling at the bottom over a halftone dot field; voice brightens it.
+ * Dismissal retracts the glow back out through the top and sides, bottom last.
  * The glow and line are rendered once (off the main thread) into alpha masks; each frame only
  * tints them with a rotating warm gradient.
  */
@@ -53,13 +51,9 @@ class AuraRing(context: Context, private val level: () -> Float) {
     private val rotation = Matrix()
     private val placement = Matrix()
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    private val blobPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val blob = RadialGradient(0f, 0f, 1f,
-        intArrayOf(BrandColors.Text.toInt(), (BrandColors.Amber and 0x00FFFFFFL or 0x99000000L).toInt(), 0),
-        floatArrayOf(0f, 0.35f, 1f), Shader.TileMode.CLAMP)
     private var angle = 0f
-    private var drift = 0f
     private var intensity = 0f
+    private var swell = 0f
     private var lastFrame = 0L
     /** Linear time through the current entry or exit; [reveal] is that time through its curve. */
     private var progress = 0f
@@ -149,8 +143,8 @@ class AuraRing(context: Context, private val level: () -> Float) {
         val style = AuraStyle.of(mode, listening)
         val target = (style.intensity + voice * VOICE_GAIN).coerceAtMost(1f)
         intensity += (target - intensity) * min(1f, dt * EASE_PER_SECOND)
+        swell += (voice - swell) * min(1f, dt * SWELL_PER_SECOND)
         angle = (angle + dt * (style.degreesPerSecond + voice * VOICE_SPIN)) % 360f
-        drift += dt * (style.degreesPerSecond / 40f + voice * 1.5f)
         rotation.setRotate(angle, width / 2f, height / 2f)
         currentShader.setLocalMatrix(rotation)
         paint.shader = currentShader
@@ -159,26 +153,17 @@ class AuraRing(context: Context, private val level: () -> Float) {
         // and leave through the top and sides first.
         val travel = (1f - reveal) * GLOW_TRAVEL_DP * density
         placement.setScale((width + 2 * travel) / width, (height + 2 * travel) / height, width / 2f, height.toFloat())
+        // Speech draws the glow slightly inward from every edge, so it breathes with the voice.
+        val pulse = swell * PULSE_DP * density
+        placement.postScale((width - 2 * pulse) / width, (height - 2 * pulse) / height, width / 2f, height / 2f)
         paint.alpha = (255 * intensity * reveal).toInt()
         canvas.drawBitmap(current.glow, placement, paint)
-        drawBlob(canvas, width + travel, height * (0.56f + 0.16f * sin(drift * 0.9f)), BLOB_DP, voice)
-        drawBlob(canvas, -travel, height * (0.72f + 0.12f * sin(drift * 0.6f + 2f)), BLOB_DP * 0.7f, voice)
 
         // The line lights all edges at once, ahead of the glow, and outlasts it on exit.
         paint.alpha = (255 * intensity * min(1f, reveal * 3f)).toInt()
         canvas.drawBitmap(current.line, 0f, 0f, paint)
 
         if (!showing && progress <= 0f) view.post { if (!showing) close() }
-    }
-
-    private fun drawBlob(canvas: Canvas, x: Float, y: Float, sizeDp: Float, voice: Float) {
-        val radius = sizeDp * density * (1f + 0.35f * voice)
-        placement.setScale(radius, radius)
-        placement.postTranslate(x, y)
-        blob.setLocalMatrix(placement)
-        blobPaint.shader = blob
-        blobPaint.alpha = (BLOB_ALPHA * intensity * reveal).toInt()
-        canvas.drawCircle(x, y, radius, blobPaint)
     }
 
     /** Switch direction without a jump: resume the new curve where the old one left the glow. */
@@ -214,6 +199,7 @@ class AuraRing(context: Context, private val level: () -> Float) {
         if (!attached) {
             syncBounds()
             intensity = 0f
+            swell = 0f
             windows.addView(view, params)
             attached = true
             view.requestApplyInsets()
@@ -324,13 +310,13 @@ class AuraRing(context: Context, private val level: () -> Float) {
         const val DOT_STRENGTH = 150
         const val LINE_DP = 2.5f
         const val GLOW_TRAVEL_DP = 48f
-        const val BLOB_DP = 90f
-        const val BLOB_ALPHA = 150
         const val ENTER_SECONDS = 0.45f
         const val EXIT_SECONDS = 0.5f
         const val VOICE_GAIN = 0.35f
         const val VOICE_SPIN = 90f
         const val EASE_PER_SECOND = 6f
+        const val SWELL_PER_SECOND = 10f
+        const val PULSE_DP = 10f
         const val MAX_FRAME_SECONDS = 0.05f
     }
 }

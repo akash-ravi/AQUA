@@ -262,7 +262,7 @@ class AgentOverlay(
         root.elevation = if (expanded) dp(12).toFloat() else 0f
         if (expanded) root.setPadding(dp(16), dp(8), dp(16), dp(12)) else root.setPadding(0, 0, 0, 0)
         orb.layoutParams = orb.layoutParams.apply {
-            width = dp(if (expanded) 44 else ORB_DP)
+            width = dp(if (expanded) 52 else ORB_DP)
             height = width
         }
         val available = windows.currentWindowMetrics.bounds.width() - dp(32)
@@ -310,7 +310,7 @@ class AgentOverlay(
     private fun dp(value: Int) = (value * context.resources.displayMetrics.density).toInt()
 
     private companion object {
-        const val ORB_DP = 72
+        const val ORB_DP = 104
         const val ENTER_SCALE = 0.8f
         const val EXIT_SCALE = 0.9f
         const val OPEN_SCALE = 0.92f
