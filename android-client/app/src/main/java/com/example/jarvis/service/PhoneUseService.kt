@@ -19,6 +19,7 @@ import com.example.jarvis.overlay.OverlayState
 import com.example.jarvis.overlay.OverlayMode
 import com.example.jarvis.overlay.OverlaySubmission
 import com.example.jarvis.overlay.routeInput
+import com.example.jarvis.voice.Voice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -38,6 +39,7 @@ class PhoneUseService : AccessibilityService() {
     private var socket: AgentSocket? = null
     private var overlay: AgentOverlay? = null
     private var aura: AuraRing? = null
+    private var voice: Voice? = null
     private var overlayVisible = false
     private var captureHidden = false
     private var taskGeneration = 0
@@ -52,13 +54,15 @@ class PhoneUseService : AccessibilityService() {
         instance = this
         val filter = IntentFilter(TaskNotification.ACTION_STOP).apply { addAction(TaskNotification.ACTION_SHOW) }
         registerReceiver(stopReceiver, filter, RECEIVER_NOT_EXPORTED)
+        voice = Voice(this, ::submitSpeech) { overlay?.setListening(it) }
         overlay = AgentOverlay(this, ::submitOverlayInput, ::stopTask,
-            ::pauseTask, ::continueTask, ::hideOverlay)
+            ::pauseTask, ::continueTask, ::hideOverlay, ::onMicPressed)
         aura = AuraRing(this)
         scope.launch {
             AgentState.state.map { OverlayState.from(it) }.distinctUntilChanged().collect {
                 overlay?.render(it)
                 updateAura()
+                if (it.mode == OverlayMode.WAITING_FOR_USER) voice?.speak(it.question.orEmpty(), ::listen)
                 if (it.mode != OverlayMode.IDLE) notification.show(when (it.mode) {
                     OverlayMode.PAUSED -> "Jarvis is paused"
                     OverlayMode.PAUSING -> "Jarvis is pausing"
@@ -76,6 +80,8 @@ class PhoneUseService : AccessibilityService() {
         overlay = null
         aura?.close()
         aura = null
+        voice?.close()
+        voice = null
         unregisterReceiver(stopReceiver)
         scope.cancel()
         super.onDestroy()
@@ -103,6 +109,7 @@ class PhoneUseService : AccessibilityService() {
     }
 
     fun stopTask() {
+        voice?.cancel()
         ++taskGeneration
         socket?.stop()
         socket = null
@@ -125,9 +132,11 @@ class PhoneUseService : AccessibilityService() {
         if (openComposer) overlay?.openComposer() else overlay?.show()
         overlay?.hideForCapture(captureHidden)
         updateAura()
+        if (openComposer) listen()
     }
 
     fun hideOverlay() {
+        voice?.cancel()
         overlayVisible = false
         overlay?.close()
         aura?.close()
@@ -145,6 +154,7 @@ class PhoneUseService : AccessibilityService() {
 
     fun answerQuestion(questionId: String, text: String) {
         if (AgentState.state.value.question?.id != questionId) return
+        voice?.cancel()
         overlay?.collapse()
         socket?.answer(questionId, text)
     }
@@ -157,6 +167,17 @@ class PhoneUseService : AccessibilityService() {
         }
     }
 
+    private fun listen(): Boolean =
+        OverlayState.from(AgentState.state.value).acceptsInput && voice?.listen() == true
+
+    private fun onMicPressed() {
+        if (!listen()) AgentState.message("Voice input is unavailable. Allow microphone access in the Jarvis app.")
+    }
+
+    private fun submitSpeech(text: String) {
+        submitOverlayInput(AssistantInput(text, OverlayState.from(AgentState.state.value).questionId))
+    }
+
     private fun onTaskFinished(generation: Int) {
         // WebSocket callbacks may arrive on OkHttp's worker thread.
         scope.launch {
@@ -165,6 +186,7 @@ class PhoneUseService : AccessibilityService() {
             notification.hide()
             AgentState.end()
             hideOverlay()
+            AgentState.state.value.message?.let { voice?.speak(it) }
         }
     }
 

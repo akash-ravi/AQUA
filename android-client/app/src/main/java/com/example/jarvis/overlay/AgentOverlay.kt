@@ -26,6 +26,7 @@ class AgentOverlay(
     private val onPause: () -> Unit,
     private val onContinue: () -> Unit,
     private val onHide: () -> Unit,
+    private val onMic: () -> Unit,
 ) {
     private val windows = service.getSystemService(WindowManager::class.java)
     private val keyboard = service.getSystemService(InputMethodManager::class.java)
@@ -33,6 +34,7 @@ class AgentOverlay(
     private var state = OverlayState()
     private var expanded = false
     private var attached = false
+    private var listening = false
 
     private val title = TextView(service).apply {
         setTextColor(BrandColors.Text.toInt())
@@ -77,6 +79,7 @@ class AgentOverlay(
         gravity = Gravity.CENTER_VERTICAL
         setPadding(0, dp(8), 0, dp(4))
         addView(input, LinearLayout.LayoutParams(0, dp(56), 1f))
+        addView(button("🎤") { onMic() }.apply { contentDescription = "Speak" })
         addView(button("Send") { submit() }.apply {
             setTextColor(BrandColors.Background.toInt())
             backgroundTintList = ColorStateList.valueOf(accent)
@@ -126,7 +129,7 @@ class AgentOverlay(
         if (state.questionId != next.questionId || state.mode != next.mode) input.text.clear()
         state = next
         if (modeChanged && next.mode == OverlayMode.PROCESSING) expanded = false
-        title.text = when (next.mode) {
+        title.text = if (listening) "●  Listening…" else when (next.mode) {
             OverlayMode.IDLE -> "●  JARVIS"
             OverlayMode.PROCESSING -> "●  Working…"
             OverlayMode.WAITING_FOR_USER -> "●  Needs your input"
@@ -142,6 +145,11 @@ class AgentOverlay(
         promptScroll.visibility = if (expanded) View.VISIBLE else View.GONE
         composer.visibility = if (expanded && next.acceptsInput) View.VISIBLE else View.GONE
         updateWindow()
+    }
+
+    fun setListening(value: Boolean) {
+        listening = value
+        render(state)
     }
 
     /** Collapse before the phone resumes acting; a keyboard must never steal the task app's focus. */
