@@ -1,3 +1,4 @@
+import argparse
 import logging
 
 import uvicorn
@@ -10,7 +11,12 @@ log = logging.getLogger("jarvis")
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
+    parser = argparse.ArgumentParser(prog="jarvis")
+    parser.add_argument("--debug", action="store_true", help="log every command, AI call and turn with its latency")
+    args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s.%(msecs)03d %(message)s", datefmt="%H:%M:%S")
+    if args.debug:
+        log.setLevel(logging.DEBUG)  # only jarvis.*; uvicorn and the SDK stay at info
     settings = Settings()
     ai = AI(settings)
     log.info("AI: %s · effort %s", ai.name, settings.effort)

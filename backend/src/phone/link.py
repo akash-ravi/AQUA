@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Literal
@@ -32,6 +33,7 @@ log = logging.getLogger("jarvis.phone")
 MAX_BAD_MESSAGES = 5
 TIMEOUT_MS = {"read_screen": 5_000, "open_app": 15_000, "screenshot": 8_000}
 DEFAULT_TIMEOUT_MS = 10_000
+LARGE_FRAME_CHARS = 16_000  # --debug logs the size and parse time of frames at least this big
 APPROVE_WORDS = {"yes", "y", "yeah", "yep", "ok", "okay", "sure", "confirm", "approve", "go ahead"}
 DECLINE_WORDS = {"no", "n", "nope", "cancel", "stop", "don't"}
 
@@ -99,10 +101,15 @@ class PhoneLink:
                 log.info("The phone sent a binary frame; closing.")
                 await self.close(1003)
                 return None
+            started = time.monotonic()
             try:
-                return parse_phone_message(raw)
+                message = parse_phone_message(raw)
             except BadMessage as problem:
                 await self.reject(problem.message)
+                continue
+            if len(raw) >= LARGE_FRAME_CHARS:
+                log.debug("got a %d KB %s, parsed in %d ms", len(raw) // 1024, message.type, _ms_since(started))
+            return message
         return None
 
     async def reject(self, message: str) -> None:
@@ -130,11 +137,14 @@ class PhoneLink:
         assert self._open_command is None, "a command is already open"
         future = asyncio.get_running_loop().create_future()
         self._open_command = (command.command_id, future, command)
+        started = time.monotonic()
         try:
             await self.send(command, check_stop=True)
             try:
                 # shield keeps a late result matchable; the wait is not cut short by Stop
-                return await asyncio.wait_for(asyncio.shield(future), command.timeout_ms / 1000 + grace)
+                result = await asyncio.wait_for(asyncio.shield(future), command.timeout_ms / 1000 + grace)
+                log.debug("%s: %s in %d ms", command.action, result.status, _ms_since(started))
+                return result
             except TimeoutError:
                 log.info("No result for %s %s in time.", command.action, command.command_id)
                 self._late_commands[command.command_id] = command
@@ -278,6 +288,10 @@ class PhoneLink:
         if result.screen:
             result.screen = sanitize_screen(result.screen)
         return result
+
+
+def _ms_since(started: float) -> int:
+    return round((time.monotonic() - started) * 1000)
 
 
 def format_question(text: str, choices: list[str] | None) -> str:

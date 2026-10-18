@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from dataclasses import asdict, dataclass, replace
 
 from src.agent import checks, safety
 from src.agent import screen as screens
@@ -29,6 +30,16 @@ RATE_LIMIT_WAITS = (5, 10, 20)
 UNAVAILABLE_WAITS = (2, 5)
 
 
+@dataclass
+class Timing:
+    """Seconds spent on each kind of work, for the latency log."""
+    ai: float = 0.0
+    ai_calls: int = 0
+    phone: float = 0.0
+    commands: int = 0
+    user: float = 0.0
+
+
 class TaskEnded(Exception):
     def __init__(self, outcome: str, summary: str, proof: list[str] | None = None):
         super().__init__(summary)
@@ -50,7 +61,7 @@ class Brain:
         self.screen_history: list[str] = []
         self.consecutive_scrolls = 0
         self.started = time.monotonic()
-        self.user_wait_seconds = 0.0
+        self.timing = Timing()
         self.screenshot: tuple[str, bytes] | None = None
         self.screenshotted_screens: set[str] = set()
         self.screenshots_taken = 0
@@ -62,20 +73,27 @@ class Brain:
     async def run(self) -> None:
         try:
             await self.read_screen()
+            self.notebook.write("setup_done")
             while True:
                 if self.link.stop_requested:
                     raise TaskEnded("stopped", "Stopped as you asked.")
                 self.check_budgets()
-                await self.capture_screenshot_if_needed()
-                decision = await self.decide_next_action()
-                if decision is not None:
-                    await self.execute(decision)
+                started, before, steps_before, decision = time.monotonic(), replace(self.timing), len(self.task.steps), None
+                try:
+                    await self.capture_screenshot_if_needed()
+                    decision = await self.decide_next_action()
+                    if decision is not None:
+                        await self.execute(decision)
+                finally:
+                    self.record_turn(decision, started, before, steps_before)
         except TaskEnded as end:
             await self.finish_task(end.outcome, end.summary, end.proof)
         except PhoneDisconnected:
             self.notebook.write("status", to="interrupted", reason="the phone disconnected")
             self.save_snapshot()
             log.info("task %s: phone disconnected", self.task.id)
+        finally:
+            self.log_timing()
 
     async def decide_next_action(self):
         view = self.view
@@ -89,8 +107,7 @@ class Brain:
                 raise self.budget_exhausted("AI calls")
             self.task.model_calls += 1
             try:
-                decision = await self.link.run_interruptible(
-                    self.ai.decide(SYSTEM_PROMPT, message, image=image, retry_note=retry))
+                decision = await self.call_ai(message, image, retry)
             except PhoneDisconnected:
                 raise
             except Interrupted:
@@ -124,7 +141,27 @@ class Brain:
             self.task.consecutive_invalid_replies = 0
             self.notebook.write("decision", n=len(self.task.steps) + 1, tool=decision.tool,
                                 args=self.redact_secrets(decision.args), model=decision.model, ms=decision.ms, note=note)
+            log.debug("AI chose %s %s", decision.tool, self.redact_secrets(decision.args))
             return decision
+
+    async def call_ai(self, message: str, image: bytes | None, retry: str | None):
+        started = time.monotonic()
+        decision, problem = None, ""
+        try:
+            decision = await self.link.run_interruptible(
+                self.ai.decide(SYSTEM_PROMPT, message, image=image, retry_note=retry))
+            return decision
+        except BaseException as error:
+            problem = getattr(error, "message", "") or type(error).__name__
+            raise
+        finally:
+            elapsed = time.monotonic() - started
+            self.timing.ai += elapsed
+            self.timing.ai_calls += 1
+            usage = {"model": decision.model, "input_tokens": decision.input_tokens,
+                     "cached_tokens": decision.cached_tokens, "output_tokens": decision.output_tokens} if decision else {}
+            self.notebook.write("ai_call", ms=round(elapsed * 1000), ok=decision is not None, problem=problem,
+                                image=image is not None, retry=retry is not None, **usage)
 
     def validate_decision(self, tool: str, args: dict, view):
         if self.has_committed_action() and len(self.task.steps) >= MAX_STEPS and tool not in POST_COMMIT_TOOLS:
@@ -240,7 +277,9 @@ class Brain:
             else:
                 self.warnings.append("The picture could not be taken; use the screen text.")
             return
+        started = time.monotonic()
         marked = annotate_screenshot(result.image, self.view)  # send() already switched to the screen the picture shows
+        log.debug("annotated the screenshot in %d ms", (time.monotonic() - started) * 1000)
         if isinstance(marked, str):
             self.warnings.append(f"The picture was unusable ({marked}); use the screen text.")
             return
@@ -352,6 +391,7 @@ class Brain:
         self.notebook.write("step_sending", n=n, command_id=command.command_id, action=command.action,
                             target=command.target, label=step.label if step else "", why=step.why if step else "",
                             confirmed=confirmed)
+        started = time.monotonic()
         try:
             result = await self.link.run(command)
         except PhoneDisconnected:
@@ -361,6 +401,10 @@ class Brain:
             if step:
                 step.status = "not sent"
             return None
+        finally:
+            elapsed = time.monotonic() - started
+            self.timing.phone += elapsed
+            self.timing.commands += 1
         error = result.error.code if result.error else ""
         if command.action == "type_text" and command.submit and error == "cant_submit":
             self.warnings.append(
@@ -368,7 +412,8 @@ class Brain:
                 "Use a visible Search/Go button or a suggestion matching the query on the fresh screen; "
                 "if none is available, ask the user to press Search on the keyboard."
             )
-        self.notebook.write("step_result", n=n, command_id=command.command_id, status=result.status, error=error)
+        self.notebook.write("step_result", n=n, command_id=command.command_id, status=result.status, error=error,
+                            ms=round(elapsed * 1000))
         if step:
             step.status = result.status
             if result.status != "ok":
@@ -390,9 +435,12 @@ class Brain:
             raise TaskEnded("failed", "The phone did not send its screen.")
 
     def set_screen(self, screen) -> None:
+        started = time.monotonic()
         self.screen = screen
         self.view = screens.render(screen, self.link.apps)
         self.task.record_screen(self.view.app)
+        log.debug("rendered %d nodes into %d lines in %d ms", len(screen.nodes), len(self.view.lines),
+                  (time.monotonic() - started) * 1000)
 
     async def ask(self, kind: str, text: str, choices, expires_in: int):
         self.notebook.write("ask", kind=kind, text=text)
@@ -400,7 +448,7 @@ class Brain:
         try:
             outcome = await self.link.ask(kind, text, choices, expires_in)
         finally:
-            self.user_wait_seconds += time.monotonic() - started
+            self.timing.user += time.monotonic() - started
         if outcome.status == "cancelled":
             return None
         shown = safety.hide_secrets(outcome.text, text) if outcome.text else None
@@ -422,7 +470,7 @@ class Brain:
         limit = MAX_STEPS + (EXTRA_STEPS_AFTER_COMMIT if self.has_committed_action() else 0)
         if len(self.task.steps) >= limit:
             raise self.budget_exhausted("steps")
-        if (time.monotonic() - self.started - self.user_wait_seconds) / 60 > MAX_WORK_MINUTES:
+        if (time.monotonic() - self.started - self.timing.user) / 60 > MAX_WORK_MINUTES:
             raise self.budget_exhausted("time")
         if self.task.invalid_replies >= MAX_INVALID_REPLIES:
             raise TaskEnded(self.failure_outcome(), "The AI kept giving answers I couldn't use.")
@@ -456,6 +504,29 @@ class Brain:
             await self.link.finish(done)
         except PhoneDisconnected:
             pass
+
+    def record_turn(self, decision, started: float, before: Timing, steps_before: int) -> None:
+        total = time.monotonic() - started
+        ai, phone, user = self.timing.ai - before.ai, self.timing.phone - before.phone, self.timing.user - before.user
+        ai_calls, commands = self.timing.ai_calls - before.ai_calls, self.timing.commands - before.commands
+        step = self.task.steps[-1] if len(self.task.steps) > steps_before else None
+        self.notebook.write("turn", tool=decision.tool if decision else None, total=round(total, 3), ai=round(ai, 3),
+                            phone=round(phone, 3), user=round(user, 3), ai_calls=ai_calls, commands=commands,
+                            step=asdict(step) if step else None)
+        log.debug("turn %s: %.2f s = AI %.2f s (%d calls) + phone %.2f s (%d commands) + user %.2f s + other %.2f s",
+                  decision.tool if decision else "-", total, ai, ai_calls, phone, commands, user,
+                  total - ai - phone - user)
+
+    def log_timing(self) -> None:
+        timing = self.timing
+        total = time.monotonic() - self.started
+        self.notebook.write("timing", total=round(total, 2), steps=len(self.task.steps),
+                            **{k: round(v, 2) for k, v in asdict(timing).items()})
+        log.info("task %s took %.1f s over %d steps: AI %.1f s (%d calls, avg %.1f s), "
+                 "phone %.1f s (%d commands, avg %d ms), waiting on you %.1f s",
+                 self.task.id, total, len(self.task.steps), timing.ai, timing.ai_calls,
+                 timing.ai / max(1, timing.ai_calls), timing.phone, timing.commands,
+                 timing.phone * 1000 / max(1, timing.commands), timing.user)
 
     # ---------- learning from each step ----------
 
