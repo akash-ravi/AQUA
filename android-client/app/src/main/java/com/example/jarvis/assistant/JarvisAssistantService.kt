@@ -6,8 +6,7 @@ import android.os.Bundle
 import android.service.voice.VoiceInteractionService
 import android.service.voice.VoiceInteractionSession
 import android.service.voice.VoiceInteractionSessionService
-import com.example.jarvis.MainActivity
-import com.example.jarvis.service.PhoneUseService
+import com.example.jarvis.AssistantActivity
 
 /** Registered with Android as a digital assistant; input remains text-only. */
 class JarvisAssistantService : VoiceInteractionService()
@@ -25,9 +24,7 @@ private class JarvisAssistantSession(context: Context) : VoiceInteractionSession
     override fun onShow(args: Bundle?, showFlags: Int) {
         super.onShow(args, showFlags)
         try {
-            val service = PhoneUseService.instance
-            if (service != null) service.showOverlay()
-            else startAssistantActivity(Intent(context, MainActivity::class.java))
+            startAssistantActivity(Intent(context, AssistantActivity::class.java))
         } finally {
             hide()
         }

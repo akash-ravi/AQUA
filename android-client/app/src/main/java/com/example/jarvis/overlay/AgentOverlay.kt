@@ -1,10 +1,10 @@
 package com.example.jarvis.overlay
 
 import android.accessibilityservice.AccessibilityService
-import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.content.res.ColorStateList
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
@@ -16,6 +16,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import com.example.jarvis.ui.BrandColors
 
 /** Service-owned window. All calls, including state rendering and removal, run on the main thread. */
 class AgentOverlay(
@@ -28,19 +29,20 @@ class AgentOverlay(
 ) {
     private val windows = service.getSystemService(WindowManager::class.java)
     private val keyboard = service.getSystemService(InputMethodManager::class.java)
-    private val accent = Color.rgb(155, 174, 255)
+    private val accent = BrandColors.Orange.toInt()
     private var state = OverlayState()
     private var expanded = false
     private var attached = false
 
     private val title = TextView(service).apply {
-        setTextColor(Color.WHITE)
-        textSize = 15f
+        setTextColor(BrandColors.Text.toInt())
+        textSize = 16f
+        letterSpacing = 0.04f
         setTypeface(typeface, Typeface.BOLD)
         setPadding(dp(8), dp(12), dp(8), dp(12))
         setOnClickListener { setExpanded(!expanded) }
     }
-    private val stop = button("Stop") { onStop() }
+    private val stop = button("Stop") { onStop() }.apply { setTextColor(BrandColors.Red.toInt()) }
     private val pause = button("Pause") { if (state.mode == OverlayMode.PAUSED) onContinue() else onPause() }
     private val controls = LinearLayout(service).apply {
         gravity = Gravity.END
@@ -48,14 +50,20 @@ class AgentOverlay(
         addView(stop)
     }
     private val prompt = TextView(service).apply {
-        setTextColor(Color.rgb(217, 222, 240))
+        setTextColor(BrandColors.Muted.toInt())
         textSize = 14f
         setPadding(dp(8), dp(8), dp(8), dp(8))
     }
     private val promptScroll = ScrollView(service).apply { addView(prompt) }
     private val input = EditText(service).apply {
-        setTextColor(Color.WHITE)
-        setHintTextColor(Color.rgb(167, 174, 198))
+        setTextColor(BrandColors.Text.toInt())
+        setHintTextColor(BrandColors.Muted.toInt())
+        background = GradientDrawable().apply {
+            setColor(BrandColors.Background.toInt())
+            cornerRadius = dp(18).toFloat()
+            setStroke(dp(1), BrandColors.Border.toInt())
+        }
+        backgroundTintList = null
         textSize = 16f
         isSingleLine = true
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
@@ -67,17 +75,21 @@ class AgentOverlay(
     }
     private val composer = LinearLayout(service).apply {
         gravity = Gravity.CENTER_VERTICAL
-        addView(input, LinearLayout.LayoutParams(0, dp(52), 1f))
-        addView(button("Send") { submit() })
+        setPadding(0, dp(8), 0, dp(4))
+        addView(input, LinearLayout.LayoutParams(0, dp(56), 1f))
+        addView(button("Send") { submit() }.apply {
+            setTextColor(BrandColors.Background.toInt())
+            backgroundTintList = ColorStateList.valueOf(accent)
+        })
     }
     private val root = LinearLayout(service).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(10), dp(4), dp(10), dp(6))
+        setPadding(dp(16), dp(8), dp(16), dp(12))
         elevation = dp(12).toFloat()
-        background = GradientDrawable().apply {
-            setColor(Color.rgb(24, 27, 40))
+        background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+            intArrayOf(BrandColors.SurfaceRaised.toInt(), BrandColors.Surface.toInt())).apply {
             cornerRadius = dp(26).toFloat()
-            setStroke(dp(1), accent)
+            setStroke(dp(1), BrandColors.Border.toInt())
         }
         val header = LinearLayout(service).apply {
             gravity = Gravity.CENTER_VERTICAL
@@ -86,11 +98,11 @@ class AgentOverlay(
         }
         addView(header)
         addView(controls)
-        addView(promptScroll, LinearLayout.LayoutParams(-1, dp(100)))
+        addView(promptScroll, LinearLayout.LayoutParams(-1, dp(76)))
         addView(composer)
     }
     private val params = WindowManager.LayoutParams(
-        dp(220), WindowManager.LayoutParams.WRAP_CONTENT,
+        dp(250), WindowManager.LayoutParams.WRAP_CONTENT,
         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
         PixelFormat.TRANSLUCENT,
@@ -115,16 +127,15 @@ class AgentOverlay(
         state = next
         if (modeChanged && next.mode == OverlayMode.PROCESSING) expanded = false
         title.text = when (next.mode) {
-            OverlayMode.IDLE -> "✦  Jarvis"
-            OverlayMode.PROCESSING -> "✦  Working…"
-            OverlayMode.WAITING_FOR_USER -> "✦  Needs your input"
-            OverlayMode.PAUSING -> "✦  Pausing…"
-            OverlayMode.PAUSED -> "✦  Paused"
+            OverlayMode.IDLE -> "●  JARVIS"
+            OverlayMode.PROCESSING -> "●  Working…"
+            OverlayMode.WAITING_FOR_USER -> "●  Needs your input"
+            OverlayMode.PAUSING -> "●  Pausing…"
+            OverlayMode.PAUSED -> "●  Paused"
         }
         title.contentDescription = "${title.text}. Tap to ${if (expanded) "collapse" else "expand"} assistant"
         prompt.text = next.question ?: next.message ?: "How can I help?"
         input.hint = if (next.questionId == null) "What should Jarvis do?" else "Your answer"
-        stop.visibility = if (next.mode == OverlayMode.IDLE) View.GONE else View.VISIBLE
         controls.visibility = if (next.mode == OverlayMode.IDLE) View.GONE else View.VISIBLE
         pause.text = if (next.mode == OverlayMode.PAUSED) "Continue" else "Pause"
         pause.isEnabled = next.mode != OverlayMode.PAUSING
@@ -163,7 +174,7 @@ class AgentOverlay(
         params.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
             (if (editing) 0 else WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
         val available = windows.currentWindowMetrics.bounds.width() - dp(32)
-        params.width = minOf(dp(if (expanded) 360 else 220), available.coerceAtLeast(dp(120)))
+        params.width = minOf(dp(if (expanded) 400 else 250), available.coerceAtLeast(dp(120)))
         if (!editing) {
             keyboard.hideSoftInputFromWindow(input.windowToken, 0)
             input.clearFocus()
@@ -183,6 +194,7 @@ class AgentOverlay(
         text = label
         isAllCaps = false
         setTextColor(accent)
+        backgroundTintList = ColorStateList.valueOf(BrandColors.SurfaceRaised.toInt())
         minWidth = dp(56)
         minimumWidth = dp(56)
         setOnClickListener { click() }

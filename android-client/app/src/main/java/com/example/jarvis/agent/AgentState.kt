@@ -4,6 +4,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 
+// Matches backend jarvis.messages.MAX_TEXT for tasks and answers.
+const val MAX_INPUT_CHARS = 2000
+
 data class Question(val id: String, val text: String)
 
 data class AgentUiState(

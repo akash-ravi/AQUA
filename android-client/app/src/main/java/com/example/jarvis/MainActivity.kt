@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -11,13 +12,10 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.SystemBarStyle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -32,27 +30,44 @@ class MainActivity : ComponentActivity() {
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (intent.getBooleanExtra(AssistantActivity.EXTRA_OPEN_OVERLAY, false)) {
+            if (PhoneUseService.instance != null) {
+                showAssistant()
+            } else {
+                Toast.makeText(this, "Enable Jarvis accessibility to open the floating assistant", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+        )
         requestNotificationPermission()
         setContent {
             JarvisTheme {
                 val state by AgentState.state.collectAsState()
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Column(Modifier.padding(innerPadding)) {
-                        Row {
-                            TextButton(onClick = ::showAssistant) { Text("Show assistant") }
-                            TextButton(onClick = ::chooseDefaultAssistant) { Text("Set default assistant") }
-                        }
-                        TaskScreen(
-                            state = state,
-                            onSubmitTask = ::startTask,
-                            onStop = { PhoneUseService.instance?.stopTask() },
-                            onAnswer = { questionId, text -> PhoneUseService.instance?.answerQuestion(questionId, text) },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
+                    TaskScreen(
+                        state = state,
+                        onSubmitTask = ::startTask,
+                        onStop = { PhoneUseService.instance?.stopTask() },
+                        onPause = { PhoneUseService.instance?.pauseTask() },
+                        onContinue = { PhoneUseService.instance?.continueTask() },
+                        onShowAssistant = ::showAssistant,
+                        onSetDefaultAssistant = ::chooseDefaultAssistant,
+                        onAnswer = { questionId, text -> PhoneUseService.instance?.answerQuestion(questionId, text) },
+                        modifier = Modifier.padding(innerPadding),
+                    )
                 }
             }
         }
@@ -60,8 +75,14 @@ class MainActivity : ComponentActivity() {
 
     private fun showAssistant() {
         val service = PhoneUseService.instance
-        if (service == null) startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-        else { service.showOverlay(); moveTaskToBack(true) }
+        if (service == null) {
+            intent.putExtra(AssistantActivity.EXTRA_OPEN_OVERLAY, true)
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        } else {
+            intent.removeExtra(AssistantActivity.EXTRA_OPEN_OVERLAY)
+            service.showOverlay()
+            moveTaskToBack(true)
+        }
     }
 
     private fun chooseDefaultAssistant() {
