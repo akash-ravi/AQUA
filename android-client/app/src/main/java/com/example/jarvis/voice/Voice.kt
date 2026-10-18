@@ -10,7 +10,7 @@ import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
 /**
- * ElevenLabs voice: Scribe v2 Realtime in (see [Listener]), Flash v2.5 out (see [ElevenSpeaker]), both streamed
+ * ElevenLabs voice: Scribe v2 Realtime in (see [Listener]), Eleven v4 Turbo out (see [ElevenSpeaker]), both streamed
  * straight from the phone with single-use tokens from the Mac. The phone's own text-to-speech speaks when
  * ElevenLabs can't. Public calls and callbacks are on the main thread; audio runs on workers.
  */

@@ -11,19 +11,20 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.LinkedBlockingQueue
 import kotlin.concurrent.thread
 
 /**
- * ElevenLabs Turbo v2.5 over its WebSocket, played as the audio arrives. A connection is opened ahead of
+ * ElevenLabs Eleven v4 Turbo over its Text to Dialogue WebSocket, played as the audio arrives. A connection is opened ahead of
  * each reply ([warm]) so speaking skips the TLS handshake. Public calls are on the main thread.
  */
 internal class ElevenSpeaker(private val tokens: VoiceTokens, private val client: OkHttpClient) {
     enum class Result { DONE, INTERRUPTED, FAILED }
 
     /** One connection, ready before it has text to say; ElevenLabs closes it after [IDLE_SECONDS] unused. */
-    private inner class Line(token: VoiceToken) : WebSocketListener() {
+    private inner class Line(private val token: VoiceToken) : WebSocketListener() {
         val openedAt = SystemClock.elapsedRealtime()
         @Volatile var alive = true
         @Volatile var playback: Playback? = null
@@ -31,22 +32,23 @@ internal class ElevenSpeaker(private val tokens: VoiceTokens, private val client
 
         init {
             // OkHttp queues this until the connection opens.
-            socket.send(JSONObject().put("text", " ").toString())
+            socket.send(JSONObject().put("voices", JSONArray().put(token.voiceId)).toString())
         }
 
         val fresh get() = alive && SystemClock.elapsedRealtime() - openedAt < (IDLE_SECONDS - 10) * 1000L
 
         fun say(text: String, into: Playback) {
             playback = into
-            socket.send(JSONObject().put("text", "$text ").toString())
-            socket.send(JSONObject().put("text", "").toString()) // end of input: generate everything now
+            val input = JSONObject().put("text", text).put("voice_id", token.voiceId).put("new_turn", true)
+            socket.send(JSONObject().put("inputs", JSONArray().put(input)).toString())
+            socket.send(JSONObject().put("close_socket", true).toString()) // end of input: generate everything now
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
             val message = runCatching { JSONObject(text) }.getOrNull() ?: return
             val audio = message.optString("audio").takeIf { !message.isNull("audio") && it.isNotEmpty() }
             if (audio != null) playback?.add(Base64.decode(audio, Base64.DEFAULT))
-            if (message.optBoolean("isFinal")) playback?.end()
+            if (message.optBoolean("is_final")) playback?.end()
             if (message.has("error")) Log.w(TAG, "Text-to-speech error: ${message.optString("error")}")
         }
 
@@ -202,9 +204,8 @@ internal class ElevenSpeaker(private val tokens: VoiceTokens, private val client
     fun level(): Float = current?.level() ?: 0f
 
     private fun request(token: VoiceToken) = Request.Builder().url(
-        "wss://api.elevenlabs.io/v1/text-to-speech/${token.voiceId}/stream-input?model_id=eleven_turbo_v2_5" +
-            "&output_format=pcm_$SAMPLE_RATE&auto_mode=true&inactivity_timeout=$IDLE_SECONDS" +
-            "&single_use_token=${token.token}"
+        "wss://api.elevenlabs.io/v1/text-to-dialogue/stream-input?model_id=eleven_v4_turbo" +
+            "&output_format=pcm_$SAMPLE_RATE&single_use_token=${token.token}"
     ).build()
 
     private fun newTrack(): AudioTrack {
@@ -241,7 +242,7 @@ internal class ElevenSpeaker(private val tokens: VoiceTokens, private val client
     private companion object {
         const val KIND = "speak"
         const val SAMPLE_RATE = 24000 // pcm_44100 needs ElevenLabs Pro; 24 kHz works on every plan
-        const val IDLE_SECONDS = 180 // ElevenLabs' maximum inactivity_timeout
+        const val IDLE_SECONDS = 20 // fixed on the Text to Dialogue WebSocket
         const val DRAIN_MARGIN_MS = 40L
         const val DRAIN_LIMIT_MS = 5_000L
         const val NORMAL_CLOSE = 1000
