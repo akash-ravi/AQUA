@@ -34,6 +34,14 @@ internal fun soundsUnfinished(transcript: String): Boolean {
     return text.substringAfterLast(' ').lowercase() in DANGLING_WORDS
 }
 
+private val OPENER_WORDS = setOf("okay", "ok", "hi", "hey", "hello", "jarvis", "so", "alright", "well", "now", "um", "uh", "hmm")
+
+/** "Okay." or "Hey Jarvis." alone is a lead-in; the request usually follows after a breath. */
+internal fun isOnlyOpener(transcript: String): Boolean {
+    val words = transcript.lowercase().split(Regex("[^a-z]+")).filter { it.isNotEmpty() }
+    return words.isNotEmpty() && words.all { it in OPENER_WORDS }
+}
+
 /**
  * One utterance per [start]: records 16 kHz mono and streams it to ElevenLabs Scribe v2 Realtime, whose VAD
  * commits the transcript once the user stops talking. Recording starts at once; audio captured while the
@@ -85,7 +93,7 @@ internal class Listener(private val tokens: VoiceTokens, private val client: OkH
                     // VAD can commit a cough or noise as empty text; keep listening for real words.
                     type == "committed_transcript" -> if (transcript.isNotEmpty()) {
                         val said = "$unfinishedText $transcript".trim()
-                        if (soundsUnfinished(said)) {
+                        if (soundsUnfinished(said) || isOnlyOpener(said)) {
                             unfinishedText = said
                             lastSpeechMs = SystemClock.uptimeMillis()
                         } else {
@@ -209,7 +217,9 @@ internal class Listener(private val tokens: VoiceTokens, private val client: OkH
             }
             if (session.heardSpeech.get()) {
                 if (speechStarted == 0L) speechStarted = now
-                if (session.unfinishedText.isNotEmpty() && now - session.lastSpeechMs > UNFINISHED_PAUSE_MS) return
+                val unfinished = session.unfinishedText
+                val allowedPause = if (isOnlyOpener(unfinished)) OPENER_PAUSE_MS else UNFINISHED_PAUSE_MS
+                if (unfinished.isNotEmpty() && now - session.lastSpeechMs > allowedPause) return
                 // A long utterance is cut at the limit; the transcript of what was said still arrives.
                 if (!committed && now - speechStarted > MAX_UTTERANCE_MS && socket != null) {
                     socket.send(chunk(ByteArray(0), commit = true))
@@ -255,6 +265,7 @@ internal class Listener(private val tokens: VoiceTokens, private val client: OkH
         const val MAX_UTTERANCE_MS = 20_000L
         const val NO_SPEECH_TIMEOUT_MS = 8_000L
         const val UNFINISHED_PAUSE_MS = 4_000L
+        const val OPENER_PAUSE_MS = 2_000L // short, because "Okay." is also a complete reply to a question
         const val COMMIT_WAIT_MS = 3_000L
         const val CONNECT_TIMEOUT_MS = 5_000L
         const val NORMAL_CLOSE = 1000
