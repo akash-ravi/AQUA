@@ -88,12 +88,10 @@ abstract class SpeechModelsTask @Inject constructor(
     private val release = "https://github.com/k2-fsa/sherpa-onnx/releases/download"
     private val moonshine = Download("$release/asr-models/sherpa-onnx-moonshine-base-en-quantized-2026-02-27.tar.bz2",
         "43232c1d13013d37317163baec3135bd771a186a4356f28c889bab453bb0e891")
-    private val kokoro = Download("$release/tts-models/kokoro-int8-en-v0_19.tar.bz2",
-        "c9f0dd393615805b0bab050c340834d5e684e732aec91c0e860cd30e982c08bd")
     private val vad = Download("$release/asr-models/silero_vad.onnx",
         "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6")
 
-    @get:Input val pins: List<String> get() = listOf(moonshine, kokoro, vad).map { "${it.url}@${it.sha256}" }
+    @get:Input val pins: List<String> get() = listOf(moonshine, vad).map { "${it.url}@${it.sha256}" }
 
     @TaskAction
     fun unpack() {
@@ -101,11 +99,6 @@ abstract class SpeechModelsTask @Inject constructor(
         files.delete { delete(out) }
         unpackArchive(fetch(moonshine), "moonshine") {
             include("*/encoder_model.ort", "*/decoder_model_merged.ort", "*/tokens.txt")
-        }
-        // English-only voice: keep espeak-ng's English dictionary and drop the other ~390 (≈17 MB).
-        unpackArchive(fetch(kokoro), "kokoro") {
-            include("*/model.int8.onnx", "*/voices.bin", "*/tokens.txt", "*/espeak-ng-data/**")
-            exclude { it.name.endsWith("_dict") && it.name != "en_dict" }
         }
         files.copy { from(fetch(vad)); into(out) }
     }

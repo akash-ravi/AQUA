@@ -8,8 +8,7 @@ import android.os.Looper
 import kotlin.concurrent.thread
 
 /**
- * On-device voice: Silero VAD + Moonshine in (see [SpeechModels]); the phone's own text-to-speech
- * out, with Kokoro as the fallback when no system engine is usable.
+ * On-device voice: Silero VAD + Moonshine in (see [SpeechModels]); the phone's own text-to-speech out.
  * Public calls and callbacks are on the main thread; audio and inference run on workers.
  */
 class Voice(
@@ -20,19 +19,13 @@ class Voice(
     private val handler = Handler(Looper.getMainLooper())
     private val models = SpeechModels(context)
     private val listener = Listener(models)
-    private val speaker = Speaker(models)
     private val system = SystemSpeaker(context)
     private val output = object : VoiceOutput {
         override fun speak(text: String, onDone: () -> Unit) {
-            if (!system.speak(text) { completed -> if (completed) onDone() }) {
-                speaker.speak(text, onDone)
-            }
+            if (!system.speak(text) { completed -> if (completed) onDone() }) onDone()
         }
 
-        override fun stop() {
-            system.stop()
-            speaker.stop()
-        }
+        override fun stop() = system.stop()
     }
     private val turn = VoiceTurn(listener, output,
         canListen = { context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED },
@@ -53,15 +46,13 @@ class Voice(
         turn.close()
         listener.close()
         system.close()
-        speaker.close()
         // Native models are freed only after the workers stop touching them.
         thread(name = "jarvis-speech-close") {
             listener.awaitClosed()
-            speaker.awaitClosed()
             models.close()
         }
     }
 
     /** Current mic or speech loudness, 0..1, for the orb and edge glow. Safe from any thread. */
-    fun level(): Float = maxOf(listener.level, speaker.level(), system.level())
+    fun level(): Float = maxOf(listener.level, system.level())
 }
