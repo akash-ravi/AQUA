@@ -26,6 +26,8 @@ data class AgentUiState(
     val pauseRequested: Boolean = false,
     val paused: Boolean = false,
     val message: String? = null,
+    /** Backend's short sentence about the current step, shown and spoken while working. */
+    val status: String? = null,
     val failed: Boolean = false,
 )
 
@@ -54,10 +56,12 @@ object AgentState {
         it.copy(paused = paused, pauseRequested = false, question = if (paused) null else it.question)
     }
 
+    fun status(text: String) = mutableState.update { it.copy(status = text.ifBlank { null }) }
+
     fun message(text: String) = mutableState.update { it.copy(message = text) }
 
     fun finish(outcome: TaskOutcome, message: String) = mutableState.update {
         it.copy(running = false, question = null, paused = false, pauseRequested = false,
-            message = message, failed = !outcome.dismissOverlay)
+            message = message, status = null, failed = !outcome.dismissOverlay)
     }
 }

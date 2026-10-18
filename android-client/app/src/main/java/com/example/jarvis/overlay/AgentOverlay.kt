@@ -5,7 +5,10 @@ import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.content.res.ColorStateList
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -13,12 +16,18 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import com.example.jarvis.R
 import com.example.jarvis.ui.BrandColors
 
-/** Service-owned window. All calls, including state rendering and removal, run on the main thread. */
+/**
+ * Service-owned window: a bare orb by default; tapping it opens the panel with status, controls and
+ * the text box. All calls, including state rendering and removal, run on the main thread.
+ */
 class AgentOverlay(
     private val context: Context,
     private val onInput: (AssistantInput) -> Boolean,
@@ -38,7 +47,6 @@ class AgentOverlay(
     private var listening = false
 
     private val orb = OrbView(context, level).apply {
-        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         setOnClickListener { setExpanded(!expanded) }
     }
     private val title = TextView(context).apply {
@@ -46,6 +54,8 @@ class AgentOverlay(
         textSize = 16f
         letterSpacing = 0.04f
         setTypeface(typeface, Typeface.BOLD)
+        maxLines = 1
+        ellipsize = TextUtils.TruncateAt.END
         setPadding(dp(8), dp(12), dp(8), dp(12))
         setOnClickListener { setExpanded(!expanded) }
     }
@@ -64,55 +74,70 @@ class AgentOverlay(
     private val promptScroll = ScrollView(context).apply { addView(prompt) }
     private val input = EditText(context).apply {
         setTextColor(BrandColors.Text.toInt())
-        setHintTextColor(BrandColors.Muted.toInt())
-        background = GradientDrawable().apply {
-            setColor(BrandColors.Background.toInt())
-            cornerRadius = dp(18).toFloat()
-            setStroke(dp(1), BrandColors.Border.toInt())
-        }
-        backgroundTintList = null
+        setHintTextColor(BrandColors.Muted.toInt() and 0x00FFFFFF or 0x99000000.toInt())
+        background = null
+        textCursorDrawable = GradientDrawable().apply { setColor(accent); setSize(dp(2), 0) }
+        highlightColor = accent and 0x00FFFFFF or 0x55000000
         textSize = 16f
-        isSingleLine = true
+        // Wraps up to four lines while Enter stays Send (no multi-line input flag).
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        setHorizontallyScrolling(false)
+        maxLines = 4
         imeOptions = EditorInfo.IME_ACTION_SEND
-        setPadding(dp(12), dp(8), dp(12), dp(8))
+        setPadding(0, dp(12), dp(8), dp(12))
         setOnEditorActionListener { _, action, _ ->
             if (action == EditorInfo.IME_ACTION_SEND) { submit(); true } else false
         }
+        setOnFocusChangeListener { _, focused -> pill.setStroke(dp(1), if (focused) accent else BrandColors.Border.toInt()) }
+        addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(text: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(text: Editable?) = updateAction()
+        })
     }
-    private val mic = button("🎤") { onMic() }
+    private val pill = GradientDrawable().apply {
+        setColor(BrandColors.Background.toInt())
+        cornerRadius = dp(28).toFloat()
+        setStroke(dp(1), BrandColors.Border.toInt())
+    }
+    private val actionBackground = GradientDrawable().apply { shape = GradientDrawable.OVAL }
+    /** One round button: mic while the box is empty, stop while listening, send once there is text. */
+    private val action = ImageButton(context).apply {
+        background = actionBackground
+        scaleType = ImageView.ScaleType.CENTER
+        setOnClickListener { if (input.text.isBlank()) onMic() else submit() }
+    }
     private val composer = LinearLayout(context).apply {
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(0, dp(8), 0, dp(4))
-        addView(input, LinearLayout.LayoutParams(0, dp(56), 1f))
-        addView(mic)
-        addView(button("Send") { submit() }.apply {
-            setTextColor(BrandColors.Background.toInt())
-            backgroundTintList = ColorStateList.valueOf(accent)
-        })
+        background = pill
+        minimumHeight = dp(56)
+        setPadding(dp(20), dp(4), dp(8), dp(4))
+        addView(input, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        addView(action, LinearLayout.LayoutParams(dp(40), dp(40)))
+    }
+    private val hide = button("×") { onHide() }.apply { contentDescription = "Hide assistant" }
+    private val panelBackground = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+        intArrayOf(BrandColors.SurfaceRaised.toInt(), BrandColors.Surface.toInt())).apply {
+        cornerRadius = dp(26).toFloat()
+        setStroke(dp(1), BrandColors.Border.toInt())
     }
     private val root = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(16), dp(8), dp(16), dp(12))
-        elevation = dp(12).toFloat()
-        background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
-            intArrayOf(BrandColors.SurfaceRaised.toInt(), BrandColors.Surface.toInt())).apply {
-            cornerRadius = dp(26).toFloat()
-            setStroke(dp(1), BrandColors.Border.toInt())
-        }
         val header = LinearLayout(context).apply {
             gravity = Gravity.CENTER_VERTICAL
-            addView(orb, LinearLayout.LayoutParams(dp(44), dp(44)))
+            addView(orb, LinearLayout.LayoutParams(dp(ORB_DP), dp(ORB_DP)))
             addView(title, LinearLayout.LayoutParams(0, dp(48), 1f))
-            addView(button("×") { onHide() }.apply { contentDescription = "Hide assistant" })
+            addView(hide)
         }
         addView(header)
         addView(controls)
         addView(promptScroll, LinearLayout.LayoutParams(-1, dp(76)))
-        addView(composer)
+        addView(composer, LinearLayout.LayoutParams(-1, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(8)
+        })
     }
     private val params = WindowManager.LayoutParams(
-        dp(250), WindowManager.LayoutParams.WRAP_CONTENT,
+        WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
         PixelFormat.TRANSLUCENT,
@@ -140,23 +165,25 @@ class AgentOverlay(
         orb.listening = listening
         title.text = if (listening) "Listening…" else when (next.mode) {
             OverlayMode.IDLE -> "JARVIS"
-            OverlayMode.PROCESSING -> "Working…"
+            OverlayMode.PROCESSING -> next.status ?: "Working…"
             OverlayMode.WAITING_FOR_USER -> "Needs your input"
             OverlayMode.PAUSING -> "Pausing…"
             OverlayMode.PAUSED -> "Paused"
         }
         title.contentDescription = "${title.text}. Tap to ${if (expanded) "collapse" else "expand"} assistant"
+        orb.contentDescription = if (expanded) "Collapse Jarvis" else "Jarvis: ${title.text}. Tap to type"
         prompt.text = next.question ?: next.message ?: "How can I help?"
         input.hint = when {
             listening -> "Listening… or type"
             next.questionId == null -> "What should Jarvis do?"
             else -> "Your answer"
         }
-        mic.text = if (listening) "■" else "🎤"
-        mic.contentDescription = if (listening) "Stop listening" else "Speak"
-        controls.visibility = if (next.mode == OverlayMode.IDLE) View.GONE else View.VISIBLE
+        updateAction()
+        controls.visibility = if (expanded && next.mode != OverlayMode.IDLE) View.VISIBLE else View.GONE
         pause.text = if (next.mode == OverlayMode.PAUSED) "Continue" else "Pause"
         pause.isEnabled = next.mode != OverlayMode.PAUSING
+        title.visibility = if (expanded) View.VISIBLE else View.GONE
+        hide.visibility = if (expanded) View.VISIBLE else View.GONE
         promptScroll.visibility = if (expanded) View.VISIBLE else View.GONE
         composer.visibility = if (expanded && next.acceptsInput) View.VISIBLE else View.GONE
         updateWindow()
@@ -196,8 +223,17 @@ class AgentOverlay(
         val editing = expanded && state.acceptsInput
         params.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
             (if (editing) 0 else WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+        // Collapsed, the window is just the orb, so it neither covers nor intercepts the app behind it.
+        root.background = if (expanded) panelBackground else null
+        root.elevation = if (expanded) dp(12).toFloat() else 0f
+        if (expanded) root.setPadding(dp(16), dp(8), dp(16), dp(12)) else root.setPadding(0, 0, 0, 0)
+        orb.layoutParams = orb.layoutParams.apply {
+            width = dp(if (expanded) 44 else ORB_DP)
+            height = width
+        }
         val available = windows.currentWindowMetrics.bounds.width() - dp(32)
-        params.width = minOf(dp(if (expanded) 400 else 250), available.coerceAtLeast(dp(120)))
+        params.width = if (expanded) minOf(dp(400), available.coerceAtLeast(dp(120)))
+            else WindowManager.LayoutParams.WRAP_CONTENT
         if (!editing) {
             keyboard.hideSoftInputFromWindow(input.windowToken, 0)
             input.clearFocus()
@@ -213,6 +249,20 @@ class AgentOverlay(
         if (onInput(event)) input.text.clear()
     }
 
+    private fun updateAction() {
+        val (icon, fill, tint, label) = when {
+            input.text.isNotBlank() -> ActionLook(R.drawable.ic_send, accent, BrandColors.Background.toInt(), "Send")
+            listening -> ActionLook(R.drawable.ic_stop, BrandColors.Red.toInt(), BrandColors.Text.toInt(), "Stop listening")
+            else -> ActionLook(R.drawable.ic_mic, BrandColors.SurfaceRaised.toInt(), BrandColors.Amber.toInt(), "Speak")
+        }
+        action.setImageResource(icon)
+        action.imageTintList = ColorStateList.valueOf(tint)
+        actionBackground.setColor(fill)
+        action.contentDescription = label
+    }
+
+    private data class ActionLook(val icon: Int, val fill: Int, val tint: Int, val label: String)
+
     private fun button(label: String, click: () -> Unit) = Button(context).apply {
         text = label
         isAllCaps = false
@@ -224,4 +274,8 @@ class AgentOverlay(
     }
 
     private fun dp(value: Int) = (value * context.resources.displayMetrics.density).toInt()
+
+    private companion object {
+        const val ORB_DP = 72
+    }
 }

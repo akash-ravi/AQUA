@@ -9,13 +9,14 @@ from src.ai.model import AIError, AIUnavailable, InvalidReply, RateLimited
 from src.phone.messages import Command, Done
 from src.phone.link import Interrupted, PhoneDisconnected, new_command
 from src.agent.screenshots import annotate_screenshot, needs_screenshot
-from src.agent.prompt import SYSTEM_PROMPT, build_step_message, describe_error, retry_note
+from src.agent.prompt import SYSTEM_PROMPT, build_step_message, describe_error, retry_note, status_line
 from src.agent.task import Notebook, Step, Task
 
 log = logging.getLogger("jarvis.brain")
 
 PHONE_TOOLS = {"tap", "type_text", "scroll", "go_back", "go_home", "open_app"}
 POST_COMMIT_TOOLS = {"scroll", "wait", "finish", "give_up", "look"}
+STATUS_TOOLS = PHONE_TOOLS | {"wait", "look"}
 MAX_SCREENSHOTS = 8
 MAX_STEPS = 50
 EXTRA_STEPS_AFTER_COMMIT = 3
@@ -28,6 +29,12 @@ QUESTION_EXPIRES = 600
 CONFIRM_EXPIRES = 120
 RATE_LIMIT_WAITS = (5, 10, 20)
 UNAVAILABLE_WAITS = (2, 5)
+MAX_HELP_ASKS = 3
+HELP_EXTRA_STEPS = 15
+HELP_EXTRA_MODEL_CALLS = 25
+HELP_CHOICES = ["Keep trying", "Stop"]
+HELP_STOP_WORDS = {"stop", "cancel", "quit", "no", "give up", "forget it", "never mind", "nevermind"}
+HELP_KEEP_GOING_WORDS = {"keep trying", "keep going", "continue", "try again", "yes", "ok", "okay", "go on"}
 
 
 @dataclass
@@ -48,6 +55,16 @@ class TaskEnded(Exception):
         self.proof = proof
 
 
+class Stuck(Exception):
+    """The agent can't make progress on its own; the user is asked what to do before the task ends."""
+
+    def __init__(self, reason: str, outcome: str, summary: str):
+        super().__init__(reason)
+        self.reason = reason
+        self.outcome = outcome
+        self.summary = summary
+
+
 class Brain:
     def __init__(self, task: Task, link, ai, notebook: Notebook):
         self.task = task
@@ -66,6 +83,9 @@ class Brain:
         self.screenshotted_screens: set[str] = set()
         self.screenshots_taken = 0
         self.screenshot_requested = False
+        self.step_limit = MAX_STEPS
+        self.model_call_limit = MAX_MODEL_CALLS
+        self.help_asks = 0
         link.on_late_result = self.handle_late_result
 
     # ---------- the loop ----------
@@ -79,13 +99,15 @@ class Brain:
                     raise TaskEnded("stopped", "Stopped as you asked.")
                 if await self.wait_if_paused():
                     await self.read_screen()
-                self.check_budgets()
                 started, before, steps_before, decision = time.monotonic(), replace(self.timing), len(self.task.steps), None
                 try:
+                    self.check_budgets()
                     await self.capture_screenshot_if_needed()
                     decision = await self.decide_next_action()
                     if decision is not None:
                         await self.execute(decision)
+                except Stuck as stuck:
+                    await self.ask_for_help(stuck)
                 finally:
                     self.record_turn(decision, started, before, steps_before)
         except TaskEnded as end:
@@ -105,7 +127,7 @@ class Brain:
         image = self.screenshot[1] if self.screenshot and self.screenshot[0] == view.signature else None
         message = self.step_message(view, image_attached=image is not None)
         while True:
-            if self.task.model_calls >= MAX_MODEL_CALLS:
+            if self.task.model_calls >= self.model_call_limit:
                 raise self.budget_exhausted("AI calls")
             self.task.model_calls += 1
             try:
@@ -166,7 +188,7 @@ class Brain:
                                 image=image is not None, retry=retry is not None, **usage)
 
     def validate_decision(self, tool: str, args: dict, view):
-        if self.has_committed_action() and len(self.task.steps) >= MAX_STEPS and tool not in POST_COMMIT_TOOLS:
+        if self.has_committed_action() and len(self.task.steps) >= self.step_limit and tool not in POST_COMMIT_TOOLS:
             return "only checking is left: scroll, wait, finish or give_up"
         checked = checks.check_decision(tool, args, view, self.link.apps, self.no_effect_actions)
         if isinstance(checked, str):
@@ -178,6 +200,8 @@ class Brain:
         tool, args = decision.tool, decision.args
         self.task.add_note(args.get("remember"))
         why = args.get("why", "")[:100]
+        if tool in STATUS_TOOLS:
+            await self.link.progress("running", self.status_text(tool, args), len(self.task.steps) + 1)
 
         if tool in PHONE_TOOLS:
             await self.handle_phone_action(tool, args, why)
@@ -192,7 +216,7 @@ class Brain:
         elif tool == "finish":
             await self.handle_finish(args)
         elif tool == "give_up":
-            raise TaskEnded(self.failure_outcome(), args["reason"])
+            raise Stuck(args["reason"], self.failure_outcome(), args["reason"])
         self.save_snapshot()
 
     # ---------- actions ----------
@@ -361,6 +385,47 @@ class Brain:
             self.task.uncertain_actions.append(f'tapped "{plan.label}" but the result was lost')
         self.record_step_outcome(step, before)
 
+    async def ask_for_help(self, stuck: Stuck) -> None:
+        """Ask the user how to get unstuck. Their answer steers the next steps; Stop or silence ends the task."""
+        if self.help_asks >= MAX_HELP_ASKS:
+            raise TaskEnded(stuck.outcome, stuck.summary)
+        self.help_asks += 1
+        question = f"I'm stuck. {stuck.reason.strip().rstrip('.')}. What should I do?"
+        self.notebook.write("stuck", reason=stuck.reason, ask=self.help_asks)
+        log.info("task %s stuck: %s", self.task.id, stuck.reason)
+        step = self.start_step("ask_user", None, question, "")
+        outcome = await self.ask("question", question, HELP_CHOICES, QUESTION_EXPIRES)
+        if outcome is None:
+            step.status = "cancelled"
+            return
+        if outcome.status == "expired":
+            raise TaskEnded("needs_user", f"{stuck.summary} I asked what to do and got no answer.")
+        answer = (outcome.text or ("yes" if outcome.status == "approved" else "no")).strip()
+        spoken = answer.casefold().rstrip(".!")
+        if spoken in HELP_STOP_WORDS:
+            raise TaskEnded("stopped", "Okay, stopping.")
+        self.task.answers.append((question, answer))
+        step.status, step.change = "answered", f"user said: {answer}"[:120]
+        if spoken in HELP_KEEP_GOING_WORDS:
+            self.warnings.append(f"You were stuck ({stuck.reason}). The user said keep trying. Try a different way.")
+        else:
+            self.task.corrections.append(answer)
+            self.warnings.append(f"You were stuck ({stuck.reason}). Follow the user's advice: {answer}")
+        self.screen_history.clear()
+        self.step_limit = max(self.step_limit, len(self.task.steps) + HELP_EXTRA_STEPS)
+        self.model_call_limit = max(self.model_call_limit, self.task.model_calls + HELP_EXTRA_MODEL_CALLS)
+        await self.read_screen()
+
+    def status_text(self, tool: str, args: dict) -> str:
+        target = args.get("target")
+        label = self.view.by_index[target].label if target in self.view.by_index else ""
+        if tool == "open_app":
+            label = self.link.apps.get(args.get("package_name"), args.get("name", ""))
+        why = args.get("why", "")
+        if safety.is_secret(why) or (tool == "type_text" and safety.is_secret(args.get("text"))):
+            why = ""
+        return status_line(tool, why, label, args.get("direction"))
+
     async def handle_finish(self, args: dict) -> None:
         await self.read_screen()
         committed = [step for step in self.task.steps if step.irreversible]
@@ -489,17 +554,21 @@ class Brain:
     # ---------- budgets and ending ----------
 
     def check_budgets(self) -> None:
-        limit = MAX_STEPS + (EXTRA_STEPS_AFTER_COMMIT if self.has_committed_action() else 0)
+        limit = self.step_limit + (EXTRA_STEPS_AFTER_COMMIT if self.has_committed_action() else 0)
         if len(self.task.steps) >= limit:
             raise self.budget_exhausted("steps")
         if (time.monotonic() - self.started - self.timing.user) / 60 > MAX_WORK_MINUTES:
-            raise self.budget_exhausted("time")
+            raise TaskEnded(self.failure_outcome(), f"I ran out of time. {self.last_tried()}".strip())
         if self.task.invalid_replies >= MAX_INVALID_REPLIES:
             raise TaskEnded(self.failure_outcome(), "The AI kept giving answers I couldn't use.")
 
-    def budget_exhausted(self, what: str) -> TaskEnded:
-        tried = "; ".join(f"{s.tool} {s.label}".strip() for s in self.task.steps[-3:])
-        return TaskEnded(self.failure_outcome(), f"I ran out of {what} before finishing. Last tried: {tried or 'nothing'}.")
+    def budget_exhausted(self, what: str) -> Stuck:
+        return Stuck(f"This is taking too many {what}.", self.failure_outcome(),
+                     f"I ran out of {what}. {self.last_tried()}".strip())
+
+    def last_tried(self) -> str:
+        steps = [s for s in self.task.steps if s.tool != "ask_user"]
+        return f"Last step: {steps[-1].tool} {steps[-1].label}".strip() + "." if steps else ""
 
     def record_invalid_reply(self, reason: str) -> None:
         self.task.consecutive_invalid_replies += 1
@@ -576,8 +645,8 @@ class Brain:
         self.screen_history.append(after.signature)
         recent = self.screen_history[-10:]
         if len(self.screen_history) >= 10 and len(set(recent)) <= 2:
-            raise TaskEnded(self.failure_outcome(), "I got stuck: " +
-                            "; ".join(f"{s.tool} {s.label}".strip() for s in self.task.steps[-3:]))
+            raise Stuck("I keep landing on the same screens.", self.failure_outcome(),
+                        f"I got stuck going in circles. {self.last_tried()}".strip())
         if len(self.screen_history) >= 6 and len(set(self.screen_history[-6:])) <= 2:
             apps = " and ".join(dict.fromkeys(self.task.screens_seen[-2:])) or "the same screens"
             self.warnings.append(f"You are going back and forth in {apps}. Try a different way.")
@@ -607,7 +676,7 @@ class Brain:
             goal=self.task.goal, corrections=self.task.corrections, answers=self.task.answers,
             completed_irreversible=self.task.completed_irreversible, uncertain_actions=self.task.uncertain_actions, notes=self.task.notes,
             apps_line=apps_line, screens_seen=self.task.screens_seen, steps=steps[-8:],
-            total_steps=len(steps), step_limit=MAX_STEPS, warnings=self.drain_warnings(),
+            total_steps=len(steps), step_limit=self.step_limit, warnings=self.drain_warnings(),
             view_text=view.text, image_attached=image_attached)
 
     def drain_warnings(self) -> list[str]:

@@ -50,6 +50,11 @@ class Voice(
         }
     }
 
+    /** Status chatter: skipped while something is already being said, so updates never pile up. */
+    fun speakIfIdle(text: String) {
+        if (utterance == null) speak(text)
+    }
+
     fun cancel() {
         speaker.stop()
         utterance = null

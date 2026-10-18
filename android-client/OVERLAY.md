@@ -1,7 +1,10 @@
 # Floating assistant overlay
 
-Enable the Jarvis accessibility service once. In the app, tap **Show assistant** to open
-the text composer. It can start a task or answer the current question. Send collapses it.
+Enable the Jarvis accessibility service once. In the app, tap **Show assistant** (or use the
+assistant gesture) to show the orb: a bare orb at the bottom of the screen, already listening.
+Tap the orb to open the panel with the status, Pause/Stop and the text box; tap it again to
+shrink back to the orb. The text box can start a task or answer the current question. Send
+collapses it to the orb.
 
 - **×** hides the panel and aura without disabling accessibility or stopping the task.
 - **Pause** waits for the current command to finish; **Continue** appears after server
@@ -32,8 +35,10 @@ other apps. A connection or backend failure must not dismiss the panel. If start
 fails, the main activity stays in front and the exception is logged under `JarvisTask`.
 
 Both assistant entry points go through `AssistantActivity`, which releases its invocation
-window before opening the composer. If accessibility is not connected, the app opens with
-a pending overlay request that is retried when you return from accessibility settings.
+window before opening the composer. The popup is the default: if accessibility is enabled but
+not yet connected (a cold start), it waits up to 2 s for the service. Only when accessibility
+is off, or never connects, does the app open with a pending overlay request that is retried
+when you return from accessibility settings.
 When a task completes, the service dismisses both the panel and aura; accessibility stays enabled.
 Errors and unexpected disconnects keep an explanation visible instead of silently closing
 the assistant. If a backend supplies an `outcome` in its final `done` frame, failed,
