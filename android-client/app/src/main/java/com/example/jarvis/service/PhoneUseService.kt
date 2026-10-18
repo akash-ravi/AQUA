@@ -53,7 +53,7 @@ class PhoneUseService : AccessibilityService() {
         val filter = IntentFilter(TaskNotification.ACTION_STOP).apply { addAction(TaskNotification.ACTION_SHOW) }
         registerReceiver(stopReceiver, filter, RECEIVER_NOT_EXPORTED)
         overlay = AgentOverlay(this, ::submitOverlayInput, ::stopTask,
-            { socket?.pause() }, { overlay?.collapse(); socket?.resume() }, ::hideOverlay)
+            ::pauseTask, ::continueTask, ::hideOverlay)
         aura = AuraRing(this)
         scope.launch {
             AgentState.state.map { OverlayState.from(it) }.distinctUntilChanged().collect {
@@ -111,6 +111,15 @@ class PhoneUseService : AccessibilityService() {
         AgentState.message("Stopped")
     }
 
+    fun pauseTask() {
+        socket?.pause()
+    }
+
+    fun continueTask() {
+        overlay?.collapse()
+        socket?.resume()
+    }
+
     fun showOverlay(openComposer: Boolean = true) {
         overlayVisible = true
         if (openComposer) overlay?.openComposer() else overlay?.show()
@@ -135,6 +144,7 @@ class PhoneUseService : AccessibilityService() {
     }
 
     fun answerQuestion(questionId: String, text: String) {
+        if (AgentState.state.value.question?.id != questionId) return
         overlay?.collapse()
         socket?.answer(questionId, text)
     }
@@ -154,6 +164,7 @@ class PhoneUseService : AccessibilityService() {
             socket = null
             notification.hide()
             AgentState.end()
+            hideOverlay()
         }
     }
 

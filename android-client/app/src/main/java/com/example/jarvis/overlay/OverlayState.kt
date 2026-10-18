@@ -1,6 +1,7 @@
 package com.example.jarvis.overlay
 
 import com.example.jarvis.agent.AgentUiState
+import com.example.jarvis.agent.MAX_INPUT_CHARS
 
 enum class OverlayMode { IDLE, PROCESSING, WAITING_FOR_USER, PAUSING, PAUSED }
 
@@ -38,7 +39,7 @@ sealed interface OverlaySubmission {
 /** Reject busy submissions and answers drafted for a different question. */
 fun routeInput(state: OverlayState, input: AssistantInput): OverlaySubmission? {
     val text = input.text.trim()
-    if (text.isEmpty() || text.length > 8000 || !state.acceptsInput) return null
+    if (text.isEmpty() || text.length > MAX_INPUT_CHARS || !state.acceptsInput) return null
     if (input.questionId != state.questionId) return null
     return when (state.mode) {
         OverlayMode.IDLE -> OverlaySubmission.StartTask(text)

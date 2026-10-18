@@ -2,6 +2,7 @@ package com.example.jarvis.overlay
 
 import com.example.jarvis.agent.AgentUiState
 import com.example.jarvis.agent.Question
+import com.example.jarvis.agent.MAX_INPUT_CHARS
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -10,7 +11,9 @@ class OverlayStateTest {
     @Test fun `task text is trimmed and routed from idle`() {
         assertEquals(OverlaySubmission.StartTask("Find pizza"), routeInput(OverlayState(), AssistantInput(" Find pizza ")))
         assertNull(routeInput(OverlayState(), AssistantInput("  ")))
-        assertNull(routeInput(OverlayState(), AssistantInput("x".repeat(8001))))
+        assertNull(routeInput(OverlayState(), AssistantInput("x".repeat(MAX_INPUT_CHARS + 1))))
+        val longest = "x".repeat(MAX_INPUT_CHARS)
+        assertEquals(OverlaySubmission.StartTask(longest), routeInput(OverlayState(), AssistantInput(longest)))
     }
 
     @Test fun `busy input cannot replace a running task`() {

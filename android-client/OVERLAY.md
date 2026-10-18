@@ -16,6 +16,19 @@ idle or hidden. Both windows are temporarily hidden before screenshot capture. T
 is not touchable and cannot take keyboard focus. The panel is shown on demand, not every
 time the accessibility service starts.
 
+The app, panel, and aura share the orange/red `BrandColors` palette; wallpaper colors do
+not override it. The aura uses maximum display bounds, extends into system-bar/cutout areas,
+ignores keyboard resizing, and follows the screen's reported corner radii. It updates on
+rotation. The app's activity log is collapsed by default.
+
+Both assistant entry points go through `AssistantActivity`, which releases its invocation
+window before opening the composer. If accessibility is not connected, the app opens with
+a pending overlay request that is retried when you return from accessibility settings.
+When a task ends, the service dismisses both the panel and aura; accessibility stays enabled.
+For call requests, the backend is instructed to finish on outgoing-call evidence for the
+intended contact, without waiting for an answer or ending the call. A clicked Call button
+alone is not proof of completion.
+
 ## Structure
 
 - `PhoneUseService` owns the window and collects `AgentState.state` on the main thread.
