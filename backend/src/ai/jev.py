@@ -8,6 +8,7 @@ URL = "https://api.typesafe.ai/v1/systemone"
 MODEL = "jev-latest"
 TIMEOUT_SECONDS = 5
 APPROVE_AT = 0.9
+SPEECH_SURE_AT = 0.85  # typed text arrives here too, so only a clear thanks/noise counts
 
 APPROVAL_QUESTION = {
     "type": "choice",
@@ -27,6 +28,28 @@ COMPLETION_QUESTION = {
         "done": "Says the task finished, even if they add a comment or a complaint",
         "not_done": "Says it did not finish or still needs doing",
         "unsure": "Doesn't know, or the reply is unclear",
+    },
+}
+PAUSE_QUESTION = {
+    "type": "choice",
+    "instructions": "The user paused a phone task and was asked what else they want, and answered by voice "
+                    "(the reply may be misheard). What does the reply mean for the paused task?",
+    "criteria": {
+        "resume": "Nothing else: carry on, continue, never mind, or no",
+        "stop": "Stop, cancel or abandon the task",
+        "thanks": "Thanks the assistant or says they're all set, with nothing more to ask",
+        "noise": "Background noise, TV, music or other people talking, not the user answering",
+        "change": "A new instruction, a change to the task, or anything else",
+    },
+}
+SPEECH_QUESTION = {
+    "type": "choice",
+    "instructions": "The phone's microphone picked this up while waiting for the user to talk to their voice "
+                    "assistant (the text may be misheard). What is it?",
+    "criteria": {
+        "talking": "A request, question, reply or remark aimed at the assistant, even if short",
+        "thanks": "Only thanks, or says they're all set, with no request",
+        "noise": "Background noise, TV, music, other people's conversation, or random words",
     },
 }
 PHONE_TASK_QUESTION = {
@@ -54,6 +77,18 @@ class Jev:
     async def says_done(self, question: str, reply: str) -> bool | None:
         answer = await self._ask(f"Question: {question}\nReply: {reply}", "completion", COMPLETION_QUESTION)
         return {"done": True, "not_done": False}.get(answer.get("choice")) if answer else None
+
+    async def pause_reply(self, question: str, reply: str) -> str | None:
+        answer = await self._ask(f"Question: {question}\nReply: {reply}", "pause", PAUSE_QUESTION)
+        return answer.get("choice") if answer else None
+
+    async def speech_kind(self, said: str) -> str:
+        """talking, thanks or noise; anything unsure counts as talking."""
+        answer = await self._ask(said, "speech", SPEECH_QUESTION)
+        if not answer:
+            return "talking"
+        choice = answer.get("choice")
+        return choice if (answer.get("probabilities") or {}).get(choice, 0) >= SPEECH_SURE_AT else "talking"
 
     async def phone_task_likelihood(self, goal: str) -> float:
         answer = await self._ask(goal, "phone_task", PHONE_TASK_QUESTION)

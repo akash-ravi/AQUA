@@ -397,6 +397,10 @@ def proof_texts(view: View) -> list[str]:
     return texts
 
 
+def field_texts(view: View) -> list[str]:
+    return [text for line in view.lines if line.node.editable and (text := clean_text(line.node.text))]
+
+
 def find_lines(view: View, label: str) -> list[Line]:
     wanted = normalize(label)
     return [line for line in view.lines if normalize(line.label) == wanted]

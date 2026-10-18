@@ -19,8 +19,8 @@ from src.phone.messages import Done, new_id
 log = logging.getLogger("jarvis.server")
 
 START_SECONDS = 10.0
-FOLLOW_UP_SECONDS = 600
-MAX_HISTORY = 5
+FOLLOW_UP_SECONDS = 1800
+MAX_HISTORY = 20
 
 
 def create_app(settings: Settings, ai: AI) -> FastAPI:
@@ -109,7 +109,9 @@ async def run_chain(parts: list[str], link: PhoneLink, settings: Settings, ai: A
         end = await Brain(task, link, ai, notebook).run()
         if end is None:
             return
-        history.append((time.monotonic(), f"{goal} → {end.outcome}: {end.summary}"))
+        said = "; ".join(f"{question} → {answer}" for question, answer in task.answers)
+        if end.summary:  # an empty summary means the mic only heard noise
+            history.append((time.monotonic(), f"{goal}{f' (user said: {said})' if said else ''} → {end.outcome}: {end.summary}"))
         summaries.append(end.summary)
         if end.outcome != "completed":
             break

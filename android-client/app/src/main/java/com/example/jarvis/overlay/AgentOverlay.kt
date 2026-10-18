@@ -49,7 +49,10 @@ class AgentOverlay(
     private var listening = false
 
     private val orb = OrbView(context, level).apply {
-        setOnClickListener { setExpanded(!expanded) }
+        setOnClickListener {
+            if (state.mode == OverlayMode.PROCESSING) onPause()
+            setExpanded(!expanded)
+        }
     }
     private val title = TextView(context).apply {
         setTextColor(BrandColors.Text.toInt())

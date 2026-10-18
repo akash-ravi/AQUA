@@ -1,7 +1,6 @@
 package com.example.jarvis.voice
 
 internal interface VoiceInput {
-    val echoCancellationActive: Boolean
     var playbackActive: Boolean
     fun start(onSpeech: () -> Unit, onDone: (String?) -> Unit): Boolean
     fun stop(): Boolean
@@ -28,7 +27,7 @@ internal class VoiceTurn(
 
     val speaking: Boolean get() = playback != null
 
-    /** An explicit mic tap interrupts playback, including on devices without AEC. */
+    /** An explicit mic tap interrupts playback. */
     fun listen(): Boolean {
         if (closed || !canListen()) return false
         stopSpeaking()
@@ -46,15 +45,13 @@ internal class VoiceTurn(
         val token = Any()
         playback = token
         input.playbackActive = true
-        if (resumeListening && recording == null && canListen()) startListening()
-        // Never feed unprotected speaker output back into the recognizer.
-        if (recording != null && !input.echoCancellationActive) stopListening()
+        // The mic stays off while Jarvis talks: echo leaking past AEC used to cut its own answers off.
+        stopListening()
         output.speak(text) {
             dispatch {
                 if (!closed && playback === token) {
                     playback = null
                     input.playbackActive = false
-                    // With AEC the same recording continues, preserving the start of the answer.
                     if (resumeListening && recording == null) listen()
                 }
             }

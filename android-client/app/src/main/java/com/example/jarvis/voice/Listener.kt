@@ -118,7 +118,6 @@ internal class Listener(private val tokens: VoiceTokens, private val client: OkH
 
     private val worker = Executors.newSingleThreadExecutor { Thread(it, "jarvis-listen") }
     private val current = AtomicReference<Session?>()
-    override val echoCancellationActive: Boolean get() = current.get()?.echoCanceller != null
     @Volatile override var playbackActive = false
     @Volatile var level = 0f
         private set

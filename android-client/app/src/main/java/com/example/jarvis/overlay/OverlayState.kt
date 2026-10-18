@@ -21,10 +21,10 @@ data class OverlayState(
     companion object {
         fun from(agent: AgentUiState) = when {
             agent.running && agent.pauseRequested -> OverlayState(OverlayMode.PAUSING, message = agent.message)
-            agent.running && agent.paused -> OverlayState(OverlayMode.PAUSED, message = agent.message)
             agent.running && agent.question != null -> OverlayState(
                 OverlayMode.WAITING_FOR_USER, agent.question.id, agent.question.text,
             )
+            agent.running && agent.paused -> OverlayState(OverlayMode.PAUSED, message = agent.message)
             agent.running -> OverlayState(OverlayMode.PROCESSING, message = agent.message, status = agent.status)
             else -> OverlayState(message = agent.message)
         }

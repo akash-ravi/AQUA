@@ -90,17 +90,22 @@ def check_finish(args: dict, view, *, goal: str, corrections: list[str], typed: 
     if not 1 <= len(proof) <= 3:
         return "finish needs 1 to 3 short phrases copied exactly from the current screen"
     shown = [screens.normalize(text) for text in screens.proof_texts(view)]
+    fields = [screens.normalize(text) for text in screens.field_texts(view)]
     own_words = [screens.normalize(text) for text in [goal, *corrections, *typed] if text]
     # A blind screen (Lyft) has no text to match, so proof can only come from the picture.
     from_picture = is_blind(view)
     new_info = False
     for phrase in proof:
         wanted = screens.normalize(phrase)
-        if not 4 <= len(wanted) <= 120:
+        own = any(wanted in words for words in own_words)
+        # A field (calculator display) proves results, but never text the user asked for or Jarvis typed, like a draft.
+        texts = shown if own else shown + fields
+        short_number = any(char.isdigit() for char in wanted) and wanted in texts
+        if len(wanted) > 120 or (len(wanted) < 4 and not short_number):
             return f'"{phrase}" is too short or too long to count as proof'
-        if not from_picture and not any(wanted in text or _word_overlap(wanted, text) >= 0.85 for text in shown):
+        if not from_picture and not any(wanted in text or _word_overlap(wanted, text) >= 0.85 for text in texts):
             return _proof_not_found(phrase, view)
-        if wanted != screens.normalize(app_label) and not any(wanted in words for words in own_words):
+        if wanted != screens.normalize(app_label) and not own:
             new_info = True
     if not new_info:
         return "that proof only repeats the request or what you typed; quote something the app shows as a result"

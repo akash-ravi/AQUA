@@ -39,6 +39,9 @@ HELP_EXTRA_STEPS = 15
 HELP_EXTRA_MODEL_CALLS = 25
 HELP_CHOICES = ["Keep trying", "Stop"]
 HELP_STOP_WORDS = {"stop", "cancel", "quit", "no", "give up", "forget it", "never mind", "nevermind"}
+PAUSE_QUESTION = "What else can I do?"
+PAUSE_ANSWER_SECONDS = 12  # the question is spoken, then the phone mic gives up after 8 s of silence (Listener.kt)
+UNSURE_REPLIES = {"not sure", "i'm not sure", "i don't know", "dunno", "no idea"} | HELP_STOP_WORDS
 HELP_KEEP_GOING_WORDS = {"keep trying", "keep going", "continue", "try again", "yes", "ok", "okay", "go on"}
 
 
@@ -137,14 +140,24 @@ class Brain:
     async def screen_out_non_tasks(self) -> None:
         """Small talk and misheard speech get a quick spoken answer instead of costing a phone run."""
         started = time.monotonic()
-        likelihood = await self.ai.phone_task_likelihood(self.task.goal)
+        said = self.task.goal
+        if self.task.earlier:
+            # Follow-ups like "how much was it?" only make sense with what came before.
+            said = "Earlier tasks:\n" + "\n".join(f"- {line}" for line in self.task.earlier) + f"\nNow the user said: {said}"
+        likelihood, kind = await asyncio.gather(self.ai.phone_task_likelihood(said), self.ai.speech_kind(self.task.goal))
         self.timing.ai += time.monotonic() - started
-        self.notebook.write("intake", phone_task=round(likelihood, 3), ms=round((time.monotonic() - started) * 1000))
+        self.notebook.write("intake", phone_task=round(likelihood, 3), speech=kind,
+                            ms=round((time.monotonic() - started) * 1000))
+        # Both end as "stopped" so the orb closes and the mic doesn't reopen; noise ends silently.
+        if kind == "noise":
+            raise TaskEnded("stopped", "")
+        if kind == "thanks":
+            raise TaskEnded("stopped", "You're welcome!")
         if likelihood >= NOT_A_TASK_BELOW:
             return
         started = time.monotonic()
         try:
-            answer = await self.ai.chat(self.task.goal)
+            answer = await self.ai.chat(said)
         except AIError:
             answer = ""
         self.timing.ai += time.monotonic() - started
@@ -483,7 +496,7 @@ class Brain:
         before = self.view
         step = self.start_step("look", None, "", why)
         step.status = "ok"
-        step.change = "picture attached" if await self.capture_screenshot(why) else "no change: no new picture"
+        step.change = "picture attached" if await self.capture_screenshot(why, force=True) else "no picture available"
         self.record_step_outcome(step, before)
 
     async def capture_screenshot(self, why: str, *, force: bool = False) -> bool:
@@ -753,7 +766,8 @@ class Brain:
             self.warnings.append(problem)
             self.warnings.append("Completion is not established. Inspect the fresh observation/image and check relevant result evidence without repeating the action. Try finish again or ask for help.")
             return
-        question = f'I checked the screen but could not verify this task: {self.task.goal}. Did it finish?'
+        # The summary, not the goal: the user may have redirected the task mid-way.
+        question = f"I couldn't confirm it on screen. {args['summary'].strip().rstrip('.')}. Did that work?"
         answer = await self.ask("question", question, ["Yes", "No", "Not sure"], QUESTION_EXPIRES)
         if answer is None:
             return
@@ -769,6 +783,14 @@ class Brain:
         if confirmed is False:
             self.task.rejected_finishes = 0
             self.task.corrections.append("The user says the task is not complete. Check the result and recover; do not blindly repeat an effect.")
+            await self.read_screen()
+            return
+        reply = (answer.text or "").strip()
+        if answer.status == "text" and reply.casefold().rstrip(".!?") not in UNSURE_REPLIES:
+            # Neither yes nor no ("It finished, but you were meant to add 2+2"): it's an instruction.
+            self.task.rejected_finishes = 0
+            self.task.corrections.append(reply)
+            self.warnings.append(f"Asked whether it worked, the user said: {reply}. Follow that.")
             await self.read_screen()
             return
         raise TaskEnded("unconfirmed", "The result could not be verified, and the user did not confirm completion.")
@@ -862,11 +884,12 @@ class Brain:
         log.debug("rendered %d nodes into %d lines in %d ms", len(screen.nodes), len(self.view.lines),
                   (time.monotonic() - started) * 1000)
 
-    async def ask(self, kind: str, text: str, choices, expires_in: int, *, secret_target=None):
+    async def ask(self, kind: str, text: str, choices, expires_in: int, *, secret_target=None, while_paused: bool = False):
         self.notebook.write("ask", kind=kind, text=text)
         started = time.monotonic()
         try:
-            outcome = await self.link.ask(kind, text, choices, expires_in, secret_target=secret_target)
+            outcome = await self.link.ask(kind, text, choices, expires_in, secret_target=secret_target,
+                                          while_paused=while_paused)
         finally:
             self.timing.user += time.monotonic() - started
         if outcome.status == "cancelled":
@@ -882,6 +905,7 @@ class Brain:
         await self.link.progress("paused", "Paused", len(self.task.steps))
         self.notebook.write("status", to="paused", reason="the user paused")
         log.info("task %s paused", self.task.id)
+        await self.take_request_while_paused()
         started = time.monotonic()
         try:
             await self.link.wait_while_paused()
@@ -893,6 +917,29 @@ class Brain:
         log.info("task %s resumed", self.task.id)
         await self.link.progress("running", "Resuming", len(self.task.steps))
         return True
+
+    async def take_request_while_paused(self) -> None:
+        """Pausing asks what else the user wants; Jev reads the reply as resume, stop or a change to the task."""
+        answer = await self.ask("question", PAUSE_QUESTION, None, PAUSE_ANSWER_SECONDS, while_paused=True)
+        if answer and answer.status == "expired":
+            raise TaskEnded("stopped", "No worries, I'll stop here.")
+        reply = (answer.text or "").strip() if answer and answer.status == "text" else ""
+        if not reply:
+            return
+        started = time.monotonic()
+        choice = await self.ai.pause_reply(PAUSE_QUESTION, reply)
+        self.timing.ai += time.monotonic() - started
+        self.notebook.write("pause_reply", reply=reply, choice=choice)
+        if choice == "stop":
+            raise TaskEnded("stopped", "Okay, stopping.")
+        if choice == "noise":
+            raise TaskEnded("stopped", "No worries, I'll stop here.")
+        if choice == "thanks":
+            raise TaskEnded("stopped", "You're welcome!")
+        if choice != "resume":
+            self.task.corrections.append(reply)
+            self.warnings.append(f"While paused, the user said: {reply}. Follow that.")
+        self.link.pause_requested = False
 
     async def sleep_interruptibly(self, seconds: float) -> bool:
         try:

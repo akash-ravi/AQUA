@@ -22,6 +22,7 @@ CHAT_PROMPT = ("You are Jarvis, a voice assistant that can also operate the user
                "something that isn't a phone task; it came from speech and may be misheard. Be super chill, like a "
                "laid-back friend texting back: lowercase vibe, a few words, slang is fine, never formal, never "
                "eager, no lists or markdown. \"yo what's up\" not \"Hello! How can I help you today?\". "
+               "If it's about an earlier task (\"how much was it?\"), answer from that task's result. "
                "If it makes no sense, just go \"huh? say that again\".")
 SPLIT_PROMPT = ("Split the user's spoken phone request into the separate tasks it asks for, in order. One goal stays "
                 "one task: \"order a pizza and fries\" is one task; \"text Sam I'm late, then set a 7am alarm\" is two. "
@@ -79,8 +80,14 @@ class AI:
         jev_key = settings.typesafe_api_key
         self.jev = Jev(jev_key.get_secret_value()) if jev_key else None
 
+    async def speech_kind(self, said: str) -> str:
+        return await self.jev.speech_kind(said) if self.jev else "talking"
+
     async def phone_task_likelihood(self, goal: str) -> float:
         return await self.jev.phone_task_likelihood(goal) if self.jev else 1.0
+
+    async def pause_reply(self, question: str, reply: str) -> str | None:
+        return await self.jev.pause_reply(question, reply) if self.jev else None
 
     async def says_done(self, question: str, reply: str) -> bool | None:
         return await self.jev.says_done(question, reply) if self.jev else None

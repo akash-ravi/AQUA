@@ -8,7 +8,6 @@ import org.junit.Test
 class VoiceTurnTest {
     private class Input : VoiceInput {
         class Capture(val onSpeech: () -> Unit, val onDone: (String?) -> Unit)
-        override var echoCancellationActive = true
         override var playbackActive = false
         var available = true
         var active = false
@@ -52,16 +51,17 @@ class VoiceTurnTest {
         fun dispatch() { while (pending.isNotEmpty()) pending.removeFirst()() }
     }
 
-    @Test fun speechInterruptsPlaybackBeforeTranscriptionAndPreservesRecording() {
+    @Test fun micStaysOffWhileSpeakingThenListensForTheReply() {
         val h = Harness()
         h.turn.speak("Which number?", listenForReply = true)
-        assertTrue(h.input.active)
+        assertFalse(h.input.active)
         assertTrue(h.output.active)
-        h.input.speech()
+        h.output.finish()
         h.dispatch()
-        assertFalse(h.output.active)
         assertTrue(h.input.active)
         assertFalse(h.input.playbackActive)
+        h.input.speech()
+        h.dispatch()
         assertTrue(h.heard.isEmpty())
         h.input.finish("The mobile number")
         h.dispatch()
@@ -81,21 +81,10 @@ class VoiceTurnTest {
         assertEquals(listOf(true), h.listening)
     }
 
-    @Test fun missingEchoCancellationFallsBackToSpeakThenListen() {
-        val h = Harness()
-        h.input.echoCancellationActive = false
-        h.turn.speak("Which number?", listenForReply = true)
-        assertFalse(h.input.active)
-        assertTrue(h.output.active)
-        h.output.finish()
-        h.dispatch()
-        assertTrue(h.input.active)
-        assertEquals(2, h.input.captures.size)
-    }
-
     @Test fun interruptedPlaybackCannotReopenTheMicAfterAnAnswer() {
         val h = Harness()
         h.turn.speak("Which number?", listenForReply = true)
+        h.turn.listen()
         h.input.speech()
         h.dispatch()
         h.input.finish("Mobile")
@@ -110,32 +99,34 @@ class VoiceTurnTest {
     @Test fun cancelledCallbacksCannotAnswerANewQuestionOrStopItsPlayback() {
         val h = Harness()
         h.turn.speak("First question", listenForReply = true)
+        h.output.finish()
+        h.dispatch()
         h.input.speech()
         h.input.finish("Old answer")
-        h.output.finish()
         h.turn.cancel()
         h.turn.speak("Replacement question", listenForReply = true)
         h.dispatch()
-        assertTrue(h.input.active)
+        assertFalse(h.input.active)
         assertTrue(h.output.active)
         assertTrue(h.heard.isEmpty())
+        h.output.finish()
+        h.dispatch()
+        assertTrue(h.input.active)
         assertEquals(2, h.input.captures.size)
     }
 
-    @Test fun cancelDuringFallbackDoesNotReopenTheMic() {
+    @Test fun cancelDuringPlaybackDoesNotReopenTheMic() {
         val h = Harness()
-        h.input.echoCancellationActive = false
         h.turn.speak("Which number?", listenForReply = true)
         h.output.finish()
         h.turn.cancel()
         h.dispatch()
         assertFalse(h.input.active)
-        assertEquals(1, h.input.captures.size)
+        assertTrue(h.input.captures.isEmpty())
     }
 
-    @Test fun explicitMicTapInterruptsPlaybackWithoutEchoCancellation() {
+    @Test fun explicitMicTapInterruptsPlayback() {
         val h = Harness()
-        h.input.echoCancellationActive = false
         h.turn.speak("Which number?", listenForReply = true)
         assertTrue(h.turn.listen())
         assertFalse(h.output.active)
@@ -170,8 +161,6 @@ class VoiceTurnTest {
     @Test fun closeRejectsQueuedCallbacksAndNewAudio() {
         val h = Harness()
         h.turn.speak("Which number?", listenForReply = true)
-        h.input.speech()
-        h.input.finish("Mobile")
         h.output.finish()
         h.turn.close()
         h.dispatch()

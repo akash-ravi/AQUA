@@ -309,8 +309,10 @@ class PhoneUseService : AccessibilityService() {
                     Toast.makeText(this@PhoneUseService, message, Toast.LENGTH_LONG).show()
                 }
             }
+            // Same as a pause: offer more, then the backend's Jev sorts the reply into a request, thanks or noise.
+            val spoken = if (outcome == TaskOutcome.COMPLETED && overlayVisible) "$message What else can I do?" else message
             // hideOverlay() cancels voice, so speak only after the overlay is settled.
-            voice?.speak(message, listenForReply = overlayVisible)
+            voice?.speak(spoken, listenForReply = overlayVisible)
         }
     }
 

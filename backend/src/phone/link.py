@@ -163,13 +163,14 @@ class PhoneLink:
         finally:
             self._open_command = None
 
-    async def ask(self, kind: str, text: str, choices: list[str] | None = None, expires_in: int = 600, *, secret_target=None) -> AskOutcome:
+    async def ask(self, kind: str, text: str, choices: list[str] | None = None, expires_in: int = 600, *, secret_target=None,
+                  while_paused: bool = False) -> AskOutcome:
         ask_id = new_id("q")
         future = asyncio.get_running_loop().create_future()
         self._open_ask = (ask_id, future, kind)
         try:
             try:
-                await self.send(Ask(ask_id=ask_id, kind=kind, text=format_question(text, choices), secret_target=secret_target), check_stop=True)
+                await self.send(Ask(ask_id=ask_id, kind=kind, text=format_question(text, choices), secret_target=secret_target), check_stop=not while_paused)
             except PhoneDisconnected:
                 raise
             except Interrupted:
@@ -178,7 +179,8 @@ class PhoneLink:
             while not future.done():
                 if self.disconnected:
                     raise PhoneDisconnected()
-                if self.stop_requested or self.pause_requested:
+                # A question asked during a pause ends when the user resumes instead.
+                if self.stop_requested or self.pause_requested != while_paused:
                     return AskOutcome("cancelled", ask_id)
                 remaining = deadline - asyncio.get_running_loop().time()
                 if remaining <= 0:

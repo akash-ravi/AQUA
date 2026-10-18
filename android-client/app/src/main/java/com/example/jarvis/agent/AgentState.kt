@@ -53,7 +53,8 @@ object AgentState {
     fun requestPause() = mutableState.update { it.copy(pauseRequested = true, question = null) }
 
     fun setPaused(paused: Boolean) = mutableState.update {
-        it.copy(paused = paused, pauseRequested = false, question = if (paused) null else it.question)
+        // Only a question asked after this point (the pause's "What else can I do?") can show.
+        it.copy(paused = paused, pauseRequested = false, question = null)
     }
 
     fun status(text: String) = mutableState.update { it.copy(status = text.ifBlank { null }) }

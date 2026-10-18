@@ -25,7 +25,7 @@ class OverlayStateTest {
     @Test fun `pause request and acknowledged pause queue tasks but do not accept answers`() {
         val asking = AgentUiState(running = true, question = Question("q", "Place order?"))
         val pausing = OverlayState.from(asking.copy(pauseRequested = true))
-        val paused = OverlayState.from(asking.copy(paused = true))
+        val paused = OverlayState.from(AgentUiState(running = true, paused = true))
         assertEquals(OverlayMode.PAUSING, pausing.mode)
         assertEquals(OverlayMode.PAUSED, paused.mode)
         assertNull(routeInput(pausing, AssistantInput("yes", questionId = "q")))
