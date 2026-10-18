@@ -5,7 +5,7 @@ from src.phone.messages import App, Ask, Command, Done, ErrorInfo, ErrorMessage,
 COMMAND_NAMES = {
     "read_screen": "readScreen", "tap": "click", "type_text": "setText", "scroll": "scroll", "go_back": "back",
     "go_home": "home", "open_app": "openApp", "screenshot": "screenshot", "list_apps": "listApps", "tap_at": "tap",
-    "type_focused": "typeFocused",
+    "type_focused": "typeFocused", "swipe": "swipe",
 }
 ERROR_CODES = {
     "staleScreen": "stale_screen", "nodeNotFound": "stale_target", "actionFailed": "action_failed",
@@ -44,6 +44,7 @@ def command_args(command: Command) -> dict:
         "screenshot": {"maxWidth": command.max_side, "screenId": command.screen_id},
         "tap_at": {"x": command.x, "y": command.y, "confirmed": command.confirmed or None},
         "type_focused": {"text": command.text, "submit": command.submit or None},
+        "swipe": {"x1": command.x, "y1": command.y, "x2": command.x2, "y2": command.y2},
     }.get(command.action, {})
     return {key: value for key, value in args.items() if value is not None}
 

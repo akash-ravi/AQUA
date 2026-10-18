@@ -43,9 +43,7 @@ def check_decision(tool: str, args: dict, view, apps: dict[str, str]) -> tuple[d
     if tool == "scroll":
         target = args.get("target")
         if target is None:
-            args["target"] = _main_list(view)
-            if args["target"] is None:
-                return "nothing on this screen scrolls"
+            args["target"] = _main_list(view)  # None means the phone swipes the whole screen (web pages, blind apps)
         else:
             ancestor = _scrollable_ancestor(view, target)
             args["target"] = target if ancestor is None else ancestor  # the phone finds the list above the item itself

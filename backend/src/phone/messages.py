@@ -15,7 +15,7 @@ MAX_IMAGE_CHARS = 11_000_000
 
 Status = Literal["ok", "failed", "rejected", "unknown"]
 Direction = Literal["down", "up", "left", "right"]
-Action = Literal["read_screen", "tap", "type_text", "scroll", "go_back", "go_home", "open_app", "screenshot", "list_apps", "tap_at", "type_focused"]
+Action = Literal["read_screen", "tap", "type_text", "scroll", "go_back", "go_home", "open_app", "screenshot", "list_apps", "tap_at", "type_focused", "swipe"]
 
 
 class Message(BaseModel):
@@ -135,6 +135,8 @@ class Command(Message):
     target: int | None = None
     x: int | None = None
     y: int | None = None
+    x2: int | None = None
+    y2: int | None = None
     text: str | None = None
     secret_ref: str | None = None
     submit: bool | None = None

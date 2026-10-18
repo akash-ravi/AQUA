@@ -12,8 +12,9 @@ FREE = re.compile(r"\b(free|no charge|no cost|zero cost)\b", re.IGNORECASE)
 NOT_PAYMENT = re.compile(r"\bbuy \d+\b.*\bget\b|\b(google|apple|samsung) pay\b|\bpay with\b|\bpaypal\b", re.IGNORECASE)
 DUPLICATE_EFFECT = re.compile(r"\b(send|delete|call|dial|post|publish|submit|book|reserve|subscribe|transfer|donate|place order|pay|buy|purchase|request ride)\b", re.IGNORECASE)
 MONEY = re.compile(r"((?:US)?\$|€|£|₹|\b(?:USD|EUR|GBP|INR|CAD|AUD)\s*)\s*(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{2}))?", re.IGNORECASE)
-BLIND_EFFECT = re.compile(r"\b(request|confirm|book|reserve|order|pay|buy|purchase|check ?out|send|submit|subscribe|donate|"
-                          r"transfer|call|dial|post|publish|delete|remove|cancel|place|select|choose|accept|agree|sign)\b", re.IGNORECASE)
+# Picking options (color, size, "Select", cookie "Accept") stays allowed; PAYMENT_ACTION still blocks the final pay/order tap.
+BLIND_EFFECT = re.compile(r"\b(request|confirm|book|reserve|send|submit|subscribe|donate|"
+                          r"transfer|call|dial|post|publish|delete|remove|cancel)\b", re.IGNORECASE)
 SLIDE_GESTURE = re.compile(r"\b(slide|swipe) to\b", re.IGNORECASE)
 SECRET_FIELD = re.compile(r"otp|one.?time|\bcode\b|cvv|cvc|card number|password|passcode|\bpin\b", re.IGNORECASE)
 SECRET_QUESTION = re.compile(r"code|otp|password|passcode|\bpin\b", re.IGNORECASE)

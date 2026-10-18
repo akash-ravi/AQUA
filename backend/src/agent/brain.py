@@ -765,6 +765,8 @@ class Brain:
     # ---------- talking to the phone ----------
 
     def command(self, action: str, args: dict) -> Command:
+        if action == "scroll" and args.get("target") is None:
+            return self.swipe_command(args.get("direction") or "down")
         targeted = action in ("tap", "type_text", "scroll")
         return new_command(
             action,
@@ -775,6 +777,16 @@ class Brain:
             direction=args.get("direction") if action == "scroll" else None,
             package_name=args.get("package_name") if action == "open_app" else None,
         )
+
+    def swipe_command(self, direction: str) -> Command:
+        width, height = self.screen.width, self.screen.height
+        near, far = 0.3, 0.7
+        start, end = {
+            "down": ((0.5, far), (0.5, near)), "up": ((0.5, near), (0.5, far)),
+            "right": ((far, 0.5), (near, 0.5)), "left": ((near, 0.5), (far, 0.5)),
+        }[direction]
+        return new_command("swipe", x=int(start[0] * width), y=int(start[1] * height),
+                           x2=int(end[0] * width), y2=int(end[1] * height))
 
     async def send(self, command: Command, step: Step | None, confirmed: bool = False):
         n = step.n if step else None
