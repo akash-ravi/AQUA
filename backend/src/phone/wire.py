@@ -21,7 +21,11 @@ def message_to_wire(message) -> dict:
         return {"type": "command", "id": message.command_id, "name": COMMAND_NAMES[message.action],
                 "args": command_args(message)}
     if isinstance(message, Ask):
-        return {"type": "ask", "id": message.ask_id, "question": message.text}
+        frame = {"type": "ask", "id": message.ask_id, "question": message.text}
+        if message.kind == "secret":
+            frame["kind"] = "secret"
+            frame["secretTarget"] = message.secret_target.model_dump() if message.secret_target else None
+        return frame
     if isinstance(message, Done):
         return {"type": "done", "summary": message.summary}
     if isinstance(message, ErrorMessage):
@@ -32,12 +36,12 @@ def message_to_wire(message) -> dict:
 def command_args(command: Command) -> dict:
     args = {
         "tap": {"screenId": command.screen_id, "index": command.target, "confirmed": command.confirmed or None},
-        "tap_at": {"x": command.x, "y": command.y},
         "type_text": {"screenId": command.screen_id, "index": command.target, "text": command.text,
-                      "submit": command.submit or None},
+                      "submit": command.submit or None, "secretRef": command.secret_ref},
         "scroll": {"screenId": command.screen_id, "index": command.target, "direction": command.direction},
         "open_app": {"name": command.package_name},
-        "screenshot": {"maxWidth": command.max_side},
+        "screenshot": {"maxWidth": command.max_side, "screenId": command.screen_id},
+        "tap_at": {"x": command.x, "y": command.y, "confirmed": command.confirmed or None},
     }.get(command.action, {})
     return {key: value for key, value in args.items() if value is not None}
 
@@ -103,4 +107,5 @@ def node_from_wire(node: dict) -> Node:
         class_name=node.get("class"), bounds=node["bounds"], clickable=bool(node.get("clickable")),
         editable=bool(node.get("editable")), scrollable=bool(node.get("scrollable")),
         checkable=node.get("checked") is not None, checked=bool(node.get("checked")),
+        sensitive=bool(node.get("sensitive")),
     )

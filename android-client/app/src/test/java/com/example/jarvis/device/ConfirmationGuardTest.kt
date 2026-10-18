@@ -7,14 +7,14 @@ import org.junit.Test
 class ConfirmationGuardTest {
     @Test
     fun sensitiveLabelsNeedConfirmation() {
-        listOf("Place order", "Pay \$14.20", "Buy now", "Send message").forEach {
+        listOf("Place order", "Pay \$14.20", "Buy now").forEach {
             assertTrue(it, ConfirmationGuard.needsConfirmation(it))
         }
     }
 
     @Test
     fun harmlessLabelsDoNotNeedConfirmation() {
-        listOf("Search", "Payment methods", "Chipotle", "").forEach {
+        listOf("Search", "Payment methods", "Chipotle", "Send message", "").forEach {
             assertFalse(it, ConfirmationGuard.needsConfirmation(it))
         }
     }

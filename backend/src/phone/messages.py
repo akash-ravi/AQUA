@@ -2,7 +2,7 @@ import json
 import uuid
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, field_validator, model_validator
 
 MAX_RESULT_CHARS = 12_000_000
 MAX_OTHER_CHARS = 64_000
@@ -37,6 +37,7 @@ class Node(Message):
     scrollable: bool = False
     checkable: bool = False
     checked: bool = False
+    sensitive: bool = False
 
 
 class Screen(Message):
@@ -53,6 +54,7 @@ class Screen(Message):
 class DeviceInfo(Message):
     width: int = Field(gt=0)
     height: int = Field(gt=0)
+    capabilities: list[str] = Field(default_factory=list, max_length=10)
 
 
 class App(Message):
@@ -97,6 +99,14 @@ class Answer(Message):
     type: Literal["answer"] = "answer"
     ask_id: str = Field(alias="id")
     text: str | None = Field(default=None, max_length=MAX_TEXT)
+    source: Literal["text", "voice"] = "text"
+    secret_ref: str | None = Field(default=None, pattern=r"^[0-9a-f-]{36}$")
+
+    @model_validator(mode="after")
+    def secret_is_reference_only(self):
+        if self.secret_ref and (self.source != "voice" or self.text):
+            raise ValueError("secret references require voice provenance and no text")
+        return self
 
 
 class Stop(Message):
@@ -126,6 +136,7 @@ class Command(Message):
     x: int | None = None
     y: int | None = None
     text: str | None = None
+    secret_ref: str | None = None
     submit: bool | None = None
     direction: Direction | None = None
     package_name: str | None = None
@@ -133,10 +144,17 @@ class Command(Message):
     max_side: int | None = None
 
 
+class SecretTarget(Message):
+    package_name: str
+    screen_id: str
+    target: int
+
+
 class Ask(Message):
     ask_id: str
-    kind: Literal["question", "confirm"]
+    kind: Literal["question", "confirm", "secret"]
     text: str
+    secret_target: SecretTarget | None = None
 
 
 class Progress(Message):

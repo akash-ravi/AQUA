@@ -207,20 +207,28 @@ class PhoneUseService : AccessibilityService() {
         }
     }
 
-    fun answerQuestion(questionId: String, text: String) {
-        if (AgentState.state.value.question?.id != questionId) return
+    fun answerQuestion(questionId: String, text: String, voiceInput: Boolean = false): Boolean {
+        val question = AgentState.state.value.question ?: return false
+        if (question.id != questionId) return false
+        if (socket?.answer(questionId, text, voiceInput) != true) {
+            val message = if (question.secret) "Use the microphone for this secret, or enter it directly on the phone and reply done."
+                else "The answer could not be sent. Check the connection."
+            AgentState.message(message)
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            return false
+        }
         voice?.cancel()
         spokenQuestionId = null
         speechQuestionId = null
         overlay?.collapse()
-        socket?.answer(questionId, text)
         voice?.speak("Got it.")
+        return true
     }
 
     private fun submitOverlayInput(input: AssistantInput): Boolean {
         return when (val submission = routeInput(OverlayState.from(AgentState.state.value), input)) {
             is OverlaySubmission.StartTask -> startTask(submission.text)
-            is OverlaySubmission.Answer -> { answerQuestion(submission.questionId, submission.text); true }
+            is OverlaySubmission.Answer -> answerQuestion(submission.questionId, submission.text, submission.voice)
             null -> false
         }
     }
@@ -245,7 +253,7 @@ class PhoneUseService : AccessibilityService() {
 
     private fun submitSpeech(text: String) {
         if (!overlayVisible || speechQuestionId != OverlayState.from(AgentState.state.value).questionId) return
-        submitOverlayInput(AssistantInput(text, speechQuestionId))
+        submitOverlayInput(AssistantInput(text, speechQuestionId, voice = true))
     }
 
     private fun onTaskFinished(generation: Int, outcome: TaskOutcome, message: String) {

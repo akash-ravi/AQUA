@@ -8,12 +8,30 @@ import org.json.JSONObject
 
 fun AccessibilityNodeInfo.label(): String = (text ?: contentDescription)?.toString().orEmpty()
 
-class ScreenReader(private val service: AccessibilityService) {
+class ScreenReader(private val service: AccessibilityService, private val secrets: SecretVault = SecretVault()) {
 
     private class Snapshot(val screenId: String, val nodes: List<AccessibilityNodeInfo>)
 
     private var snapshot: Snapshot? = null
     private var snapshotCounter = 0
+
+    fun fieldKey(node: AccessibilityNodeInfo): String = listOf(node.packageName, node.viewIdResourceName,
+        node.className, node.hintText, if (node.viewIdResourceName.isNullOrEmpty()) Rect().also { node.getBoundsInScreen(it) } else "").joinToString("|")
+
+    fun isSensitive(node: AccessibilityNodeInfo): Boolean = node.isPassword || secrets.isProtected(fieldKey(node)) ||
+        (node.isEditable && Regex("password|passcode|\\bpin\\b|otp|one.?time|\\bcode\\b|cvv|cvc|card.?number", RegexOption.IGNORE_CASE)
+            .containsMatchIn(listOf(node.viewIdResourceName, node.hintText, node.contentDescription).joinToString(" ")))
+
+    fun hasSensitiveFields(): Boolean {
+        val root = service.rootInActiveWindow ?: return true
+        fun contains(node: AccessibilityNodeInfo): Boolean = isSensitive(node) ||
+            (0 until node.childCount).any { node.getChild(it)?.let(::contains) == true }
+        return contains(root)
+    }
+
+    fun contextLabels(): String = snapshot?.nodes.orEmpty().filterNot(::isSensitive).joinToString(" ") { it.label() }
+
+    fun packageName(): String = service.rootInActiveWindow?.packageName?.toString().orEmpty()
 
     fun read(): JSONObject {
         val root = service.rootInActiveWindow ?: throw CommandException("actionFailed", "no active window")
@@ -27,11 +45,13 @@ class ScreenReader(private val service: AccessibilityService) {
     }
 
     fun nodeFor(screenId: String, index: Int): AccessibilityNodeInfo {
+        requireSnapshot(screenId)
         val current = snapshot
-        if (current == null || current.screenId != screenId) {
-            throw CommandException("staleScreen", "screenId $screenId is not the latest screen, call readScreen again")
-        }
-        return current.nodes.getOrNull(index) ?: throw CommandException("nodeNotFound", "no node at index $index")
+        return current?.nodes?.getOrNull(index) ?: throw CommandException("nodeNotFound", "no node at index $index")
+    }
+
+    fun requireSnapshot(screenId: String) {
+        if (snapshot?.screenId != screenId) throw CommandException("staleScreen", "Read the current screen again")
     }
 
     fun labelsAt(x: Int, y: Int): List<String> {
@@ -50,11 +70,13 @@ class ScreenReader(private val service: AccessibilityService) {
 
     private fun describe(index: Int, node: AccessibilityNodeInfo): JSONObject {
         val bounds = Rect().also { node.getBoundsInScreen(it) }
+        val sensitive = isSensitive(node)
         return JSONObject()
             .put("index", index)
             .put("class", node.className?.toString()?.substringAfterLast('.'))
-            .put("text", node.text?.toString())
-            .put("desc", node.contentDescription?.toString())
+            .put("text", if (sensitive) "[hidden]" else secrets.redact(node.text?.toString()))
+            .put("desc", if (sensitive) "Secret field" else secrets.redact(node.contentDescription?.toString()))
+            .put("sensitive", sensitive)
             .put("id", node.viewIdResourceName)
             .put("bounds", JSONArray(listOf(bounds.left, bounds.top, bounds.right, bounds.bottom)))
             .put("clickable", node.isClickable)

@@ -3,10 +3,10 @@ import re
 
 from src.agent import screen as screens
 
-TARGETED = {"tap", "type_text", "confirm_and_tap"}
+TARGETED = {"tap", "type_text", "confirm_and_tap", "request_secret"}
 
 
-def check_decision(tool: str, args: dict, view, apps: dict[str, str], no_effect_actions: set[tuple]) -> tuple[dict, str] | str:
+def check_decision(tool: str, args: dict, view, apps: dict[str, str]) -> tuple[dict, str] | str:
     """Returns (possibly corrected args, a note for the log), or a plain warning for the AI."""
     args = dict(args)
     note = ""
@@ -58,12 +58,7 @@ def check_decision(tool: str, args: dict, view, apps: dict[str, str], no_effect_
     if tool == "ask_user" and args.get("choices"):
         args["choices"] = [choice[:60] for choice in args["choices"]][:6]
 
-    if tool in TARGETED | {"scroll"} and args.get("target") is not None:
-        label = view.by_index[args["target"]].label if args["target"] in view.by_index else ""
-        if (tool, label, view.signature) in no_effect_actions:
-            return "already tried; nothing happened. Try something different"
-    elif (tool, "", view.signature) in no_effect_actions and tool in {"go_back", "scroll", "look"}:
-        return "already tried; nothing happened. Try something different"
+    # Execution owns bounded retries. An unchanged tree alone is not a permanent veto.
     return args, note
 
 

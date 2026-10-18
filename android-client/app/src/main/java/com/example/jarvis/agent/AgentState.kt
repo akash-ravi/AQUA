@@ -17,7 +17,7 @@ enum class TaskOutcome {
     }
 }
 
-data class Question(val id: String, val text: String)
+data class Question(val id: String, val text: String, val secret: Boolean = false)
 
 data class AgentUiState(
     val running: Boolean = false,

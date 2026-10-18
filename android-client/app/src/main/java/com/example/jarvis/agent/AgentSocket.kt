@@ -14,6 +14,7 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
+import org.json.JSONArray
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -36,6 +37,7 @@ class AgentSocket(
 
     fun start(task: String, device: JSONObject) {
         commandWorker = scope.launch { for (command in incomingCommands) runCommand(command) }
+        device.put("capabilities", JSONArray(listOf("spokenSecretsV1")))
         val startMessage = JSONObject().put("type", "start").put("task", task).put("device", device)
         webSocket = client.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
@@ -57,10 +59,27 @@ class AgentSocket(
         })
     }
 
-    fun answer(questionId: String, text: String) {
+    fun answer(questionId: String, text: String, voice: Boolean = false): Boolean {
+        val question = AgentState.state.value.question ?: return false
+        if (question.id != questionId) return false
+        val message = JSONObject().put("type", "answer").put("id", questionId)
+        if (question.secret) {
+            if (text.trim().lowercase().trimEnd('.', '!', '?') in setOf("done", "entered", "finished")) {
+                executor.cancelPendingSecrets()
+                message.put("text", "done")
+            } else {
+                if (!voice) return false
+                val ref = executor.storeSecret(questionId, text) ?: return false
+                message.put("source", "voice").put("secret_ref", ref)
+            }
+        } else message.put("text", text).put("source", if (voice) "voice" else "text")
+        if (webSocket?.send(message.toString()) != true) {
+            executor.cancelPendingSecrets()
+            return false
+        }
         AgentState.clearQuestion()
-        AgentState.log("> $text")
-        webSocket?.send(JSONObject().put("type", "answer").put("id", questionId).put("text", text).toString())
+        AgentState.log(if (question.secret) "> Secret entry submitted" else "> Answer submitted")
+        return true
     }
 
     fun stop() {
@@ -73,6 +92,7 @@ class AgentSocket(
     fun pause() {
         if (ready.get() && !finished.get() && webSocket?.send(JSONObject().put("type", "pause").toString()) == true) {
             AgentState.requestPause()
+            executor.cancelPendingSecrets()
         }
     }
 
@@ -90,7 +110,18 @@ class AgentSocket(
         }
         when (message.optString("type")) {
             "command" -> incomingCommands.trySend(message)
-            "ask" -> AgentState.ask(Question(message.optString("id"), message.optString("question")))
+            "ask" -> scope.launch {
+                if (!finished.get()) {
+                    val id = message.optString("id")
+                    val secret = message.optString("kind") == "secret"
+                    executor.cancelPendingSecrets()
+                    if (secret) {
+                        try { executor.prepareSecret(id, message.optJSONObject("secretTarget")) }
+                        catch (error: Exception) { AgentState.log("Secret voice entry unavailable; enter it directly on the phone") }
+                    }
+                    AgentState.ask(Question(id, message.optString("question"), secret))
+                }
+            }
             "progress" -> when (message.optString("state")) {
                 "paused" -> AgentState.setPaused(true)
                 "running" -> {
@@ -116,7 +147,7 @@ class AgentSocket(
     private suspend fun runCommand(command: JSONObject) {
         val name = command.optString("name")
         val args = command.optJSONObject("args") ?: JSONObject()
-        AgentState.log("$name $args")
+        AgentState.log(if (name == "setText") "setText [text hidden]" else "$name $args")
         val reply = JSONObject().put("type", "result").put("id", command.optString("id"))
         try {
             if (++commandCount > MAX_COMMANDS) throw CommandException("stepLimit", "limit of $MAX_COMMANDS commands reached")
@@ -146,6 +177,7 @@ class AgentSocket(
         AgentState.log(message)
         incomingCommands.close()
         commandWorker?.cancel()
+        executor.clearSecrets()
         onFinished(outcome, message)
     }
 

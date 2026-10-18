@@ -20,6 +20,8 @@ class Step:
     change: str = ""
     error: str = ""
     irreversible: bool = False
+    duplicate_sensitive: bool = False
+    action_key: str = ""
     signature: str = ""
 
     @property
@@ -44,6 +46,7 @@ class Task:
     invalid_replies: int = 0
     rejected_finishes: int = 0
     wait_seconds: float = 0.0
+    completion_evidence: str | None = None
 
     def add_note(self, text: str | None) -> None:
         text = (text or "").strip()[:MAX_NOTE_CHARS]

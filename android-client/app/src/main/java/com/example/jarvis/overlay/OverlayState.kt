@@ -8,6 +8,7 @@ enum class OverlayMode { IDLE, PROCESSING, WAITING_FOR_USER, PAUSING, PAUSED }
 data class AssistantInput(
     val text: String,
     val questionId: String? = null,
+    val voice: Boolean = false,
 )
 
 data class OverlayState(
@@ -34,7 +35,7 @@ data class OverlayState(
 
 sealed interface OverlaySubmission {
     data class StartTask(val text: String) : OverlaySubmission
-    data class Answer(val questionId: String, val text: String) : OverlaySubmission
+    data class Answer(val questionId: String, val text: String, val voice: Boolean = false) : OverlaySubmission
 }
 
 /** Reject busy submissions and answers drafted for a different question. */
@@ -44,7 +45,7 @@ fun routeInput(state: OverlayState, input: AssistantInput): OverlaySubmission? {
     if (input.questionId != state.questionId) return null
     return when (state.mode) {
         OverlayMode.IDLE -> OverlaySubmission.StartTask(text)
-        OverlayMode.WAITING_FOR_USER -> state.questionId?.let { OverlaySubmission.Answer(it, text) }
+        OverlayMode.WAITING_FOR_USER -> state.questionId?.let { OverlaySubmission.Answer(it, text, input.voice) }
         OverlayMode.PROCESSING, OverlayMode.PAUSING, OverlayMode.PAUSED -> null
     }
 }

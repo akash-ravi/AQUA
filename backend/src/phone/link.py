@@ -51,9 +51,10 @@ class PhoneDisconnected(Interrupted):
 
 @dataclass
 class AskOutcome:
-    status: Literal["approved", "declined", "text", "expired", "cancelled"]
+    status: Literal["approved", "declined", "text", "expired", "cancelled", "secret"]
     ask_id: str = ""
     text: str = ""
+    secret_ref: str | None = None
 
 
 def new_command(action: str, **fields) -> Command:
@@ -67,6 +68,7 @@ class PhoneLink:
         self.width = 0
         self.height = 0
         self.apps: dict[str, str] = {}
+        self.capabilities: set[str] = set()
         self.stop_requested = False
         self.pause_requested = False
         self.disconnected = False
@@ -82,6 +84,7 @@ class PhoneLink:
 
     def start(self, start: Start) -> None:
         self.width, self.height = start.device.width, start.device.height
+        self.capabilities = set(start.device.capabilities)
         self._reader = asyncio.create_task(self._read())
 
     async def load_apps(self) -> None:
@@ -160,13 +163,13 @@ class PhoneLink:
         finally:
             self._open_command = None
 
-    async def ask(self, kind: str, text: str, choices: list[str] | None = None, expires_in: int = 600) -> AskOutcome:
+    async def ask(self, kind: str, text: str, choices: list[str] | None = None, expires_in: int = 600, *, secret_target=None) -> AskOutcome:
         ask_id = new_id("q")
         future = asyncio.get_running_loop().create_future()
         self._open_ask = (ask_id, future, kind)
         try:
             try:
-                await self.send(Ask(ask_id=ask_id, kind=kind, text=format_question(text, choices)), check_stop=True)
+                await self.send(Ask(ask_id=ask_id, kind=kind, text=format_question(text, choices), secret_target=secret_target), check_stop=True)
             except PhoneDisconnected:
                 raise
             except Interrupted:
@@ -318,6 +321,12 @@ def format_question(text: str, choices: list[str] | None) -> str:
 
 
 def _to_outcome(ask_id: str, kind: str, answer: Answer) -> AskOutcome:
+    if kind == "secret":
+        if answer.source == "voice" and answer.secret_ref:
+            return AskOutcome("secret", ask_id, secret_ref=answer.secret_ref)
+        # Legacy/manual clients may only acknowledge direct entry on the phone.
+        manual = (answer.text or "").casefold().strip(" .!?")
+        return AskOutcome("text", ask_id, text="done" if manual in {"done", "entered", "finished"} else "manual entry needed")
     reply = (answer.text or "").strip()
     spoken = reply.casefold().strip(" .,!?")  # speech-to-text adds punctuation: "Yes."
     if kind == "confirm" and spoken in APPROVE_WORDS:

@@ -96,8 +96,8 @@ Listening is on-device and open source, run through [sherpa-onnx](https://github
 Replies use the phone's own text-to-speech engine (Google's on Pixel), which starts talking within
 a few hundred milliseconds. If no system engine with an English voice is usable, replies are skipped
 but still reported as finished. The manifest declares the `TTS_SERVICE` query, without which Android 11+ hides the engine.
-Jarvis says "On it." as soon as a task starts and "Got it." after an answer, then speaks each
-step status, questions and the final result. With the system engine, the orb pulses on each word.
+Jarvis says "Got it." after an answer and speaks questions and the final result. Step
+statuses appear as text. With the system engine, the orb pulses on each word.
 
 | Stage | Model | Why |
 | --- | --- | --- |
@@ -141,6 +141,33 @@ The models are not in git. The `speechModels` Gradle task downloads pinned, SHA-
 archives from sherpa-onnx releases into `android-client/.speech-models/` (git-ignored) and
 packages them as uncompressed assets, about 270 MB. The first build needs network. Only
 `arm64-v8a` native libraries are packaged.
+
+## Guardrail protocol changes
+
+Deploy the updated backend and Android client together. Initial approval is only for actions
+that cost money; free sends/deletions/calls do not need blanket approval. Possible duplicate
+effects still require result checks and explicit retry permission when uncertain. Payment
+buttons, transaction context, and current quoted charges are rechecked after approval.
+
+Click failures no longer trigger an immediate second gesture on the phone. A coordinate
+fallback is a separate, counted retry after backend observation and any required approval.
+
+Updated phones advertise `spokenSecretsV1` in `start.device.capabilities`. A secret-entry
+question includes `kind: "secret"` and `secretTarget` with `package_name`, `screen_id`, and
+`target`. The user can enter the value directly in the target app and reply "done", or speak
+it during this question. Spoken answers send `source: "voice"` and `secret_ref`, with no
+text. The backend uses `setText` with `secretRef`, a fresh `screenId`, and `index`.
+
+The value stays in task-local Android memory, bound to the question/app/field, behind a
+one-use reference that expires after two minutes. Pause, question replacement, Stop, and
+disconnect invalidate pending references. Values are excluded from answer/command logs,
+known secret fields are masked in screen reads, and screenshots are disabled while secret
+content may be visible (for the rest of the task after supplying a secret). Numeric fields
+accept individual spoken English digits; use direct manual entry if recognition is wrong.
+Older phones retain direct manual entry; they cannot receive raw secrets from this backend.
+
+Recognition still cannot establish whether unrelated background speech was intended for
+Jarvis. Wake words, speaker identification, and additional noise filtering remain deferred.
 
 ## Validation
 

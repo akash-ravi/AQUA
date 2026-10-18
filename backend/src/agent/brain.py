@@ -6,11 +6,12 @@ from dataclasses import asdict, dataclass, replace
 from src.agent import checks, safety
 from src.agent import screen as screens
 from src.ai.model import AIError, AIUnavailable, InvalidReply, RateLimited
-from src.phone.messages import Command, Done
+from src.phone.messages import Command, Done, SecretTarget
 from src.phone.link import Interrupted, PhoneDisconnected, new_command
 from src.agent.screenshots import annotate_screenshot, needs_screenshot
 from src.agent.prompt import SYSTEM_PROMPT, build_step_message, describe_error, retry_note, status_line
 from src.agent.task import Notebook, Step, Task
+from src.agent.recovery import Attempt, yes_no
 
 log = logging.getLogger("jarvis.brain")
 
@@ -77,7 +78,6 @@ class Brain:
         self.screen = None
         self.view = None
         self.warnings: list[str] = []
-        self.no_effect_actions: set[tuple] = set()
         self.screen_history: list[str] = []
         self.consecutive_scrolls = 0
         self.started = time.monotonic()
@@ -90,6 +90,9 @@ class Brain:
         self.step_limit = MAX_STEPS
         self.model_call_limit = MAX_MODEL_CALLS
         self.help_asks = 0
+        self.attempts: dict[str, Attempt] = {}
+        self.secret_screens = False
+        self.verification_signature: str | None = None
         link.on_late_result = self.handle_late_result
 
     # ---------- the loop ----------
@@ -205,7 +208,7 @@ class Brain:
     def validate_decision(self, tool: str, args: dict, view):
         if self.has_committed_action() and len(self.task.steps) >= self.step_limit and tool not in POST_COMMIT_TOOLS:
             return "only checking is left: scroll, wait, finish or give_up"
-        checked = checks.check_decision(tool, args, view, self.link.apps, self.no_effect_actions)
+        checked = checks.check_decision(tool, args, view, self.link.apps)
         if isinstance(checked, str):
             return checked
         problem = safety.check_action(tool, checked[0], view)
@@ -228,53 +231,138 @@ class Brain:
             await self.handle_ask_user(args)
         elif tool == "confirm_and_tap":
             await self.handle_confirm_and_tap(args, why)
+        elif tool == "request_secret":
+            await self.handle_secret_entry(args)
         elif tool == "finish":
             await self.handle_finish(args)
         elif tool == "give_up":
-            raise Stuck(args["reason"], self.failure_outcome(), args["reason"])
+            if self.task.rejected_finishes or self.task.uncertain_actions:
+                await self.handle_finish({"summary": args["reason"], "proof": []})
+            else:
+                raise Stuck(args["reason"], self.failure_outcome(), args["reason"])
         self.save_snapshot()
 
     # ---------- actions ----------
 
     async def handle_phone_action(self, tool: str, args: dict, why: str) -> None:
+        if not await self.allow_attempt(tool, args):
+            return
         before = self.view
         target = args.get("target")
         label = before.by_index[target].label if target in before.by_index else ""
         if tool == "open_app":
             label = self.link.apps.get(args.get("package_name"), args.get("name", ""))
         step = self.start_step(tool, target, label, why)
+        step.action_key = safety.action_key(tool, args, before)
+        step.duplicate_sensitive = safety.duplicate_sensitive(tool, args, before)
+
+        if tool == "tap" and safety.payment_requirement(before, target) == "unknown":
+            details = safety.transaction_details(before)
+            answer = await self.ask("question", f'Does "{label}" cost you money?', ["No cost", "Costs money"], QUESTION_EXPIRES)
+            if answer is None:
+                return
+            if answer.text.casefold().strip(" .!?") not in {"no cost", "free", "no", "no charge", "it is free"}:
+                self.warnings.append("Establish the charge, then use confirm_and_tap. Nothing was tapped.")
+                return
+            await self.read_screen()
+            matches = [line for line in self.view.lines if line.label == label and line.role == before.by_index[target].role]
+            if (self.view.screen.package_name != before.screen.package_name
+                    or safety.transaction_details(self.view) != details or len(matches) != 1):
+                self.warnings.append("The screen changed during the cost question; choose the action again.")
+                return
+            args = {**args, "target": matches[0].index}
+            command = self.attempt_command(tool, args)
+            command.confirmed = True  # phone also gates ambiguous subscription/booking labels
+        else:
+            command = self.attempt_command(tool, args)
 
         if tool == "type_text" and args.get("tap_first"):
             if not await self.focus_and_type(step, args):
+                self.note_attempt(step, before)
                 return
+            self.note_attempt(step, before)
             self.record_step_outcome(step, before)
             return
 
-        result = await self.send(self.command(tool, args), step)
+        result = await self.send(command, step)
         if result is None:
             return
-        if (result.status == "rejected" and tool == "tap" and result.error
-                and result.error.code in ("stale_screen", "stale_target")):
-            retarget = self.find_shifted_target(before, label)
-            if retarget is not None:
-                step.change = "screen shifted; tapped the same item again"
-                result = await self.send(self.command(tool, {**args, "target": retarget}), step)
-                if result is None:
-                    return
-        if tool == "tap" and self.tap_had_no_effect(result, before) and target in before.by_index:
-            await self.tap_by_coordinates(step, before.by_index[target].node)
+        unchanged = result.status == "ok" and screens.describe_change(before, self.view).startswith("no change")
+        if result.status in {"failed", "unknown"} or unchanged:
+            await self.observe_result(before)
         if tool == "type_text" and result.status == "ok":
             self.task.typed_texts.append(args.get("text", ""))
+        self.note_attempt(step, before)
         self.record_step_outcome(step, before)
 
-    def tap_had_no_effect(self, result, before) -> bool:
-        if result.status == "failed" and result.error and result.error.code == "action_failed":
+    async def allow_attempt(self, tool: str, args: dict) -> bool:
+        key = safety.action_key(tool, args, self.view)
+        previous = self.attempts.get(key)
+        if previous is None:
             return True
-        return result.status == "ok" and screens.describe_change(before, self.view).startswith("no change")
+        if previous.user_verified:
+            self.warnings.append("The user says this action already happened. Verify/finish; do not repeat it.")
+            return False
+        if not previous.duplicate_sensitive and previous.progressed:
+            return True
+        if previous.count >= 2:
+            raise Stuck("That action has already been attempted twice; try another approach", self.failure_outcome(),
+                        "Stopped retrying the same action.")
+        if previous.duplicate_sensitive and previous.status not in {"rejected", "not sent"} and not previous.retry_authorized:
+            if not previous.recovery_requested:
+                if not await self.observe_result(self.view, force_image=True):
+                    return False
+                previous.recovery_requested = True
+                self.warnings.append("Inspect the result and fresh image, if available, before repeating this effect. If still uncertain, the user must resolve whether to retry.")
+                return False
+            answer = await self.ask("question", "The earlier action may already have happened. Check its result before choosing Retry action.",
+                                    ["Already done", "Retry action", "Not sure"], QUESTION_EXPIRES)
+            if answer is None:
+                return False
+            reply = answer.text.casefold().strip(" .!?")
+            if reply in {"already done", "done", "yes", "it worked"}:
+                previous.user_verified = True
+                self.warnings.append("The user confirmed the earlier action. Do not repeat it; check completion.")
+                return False
+            if reply != "retry action":
+                raise TaskEnded("unconfirmed", "The earlier action may already have happened; it was not repeated.")
+            await self.read_screen()
+            # The caller must use a target from this observation, not the pre-question index.
+            self.warnings.append("The user authorized one retry. Select the target on the fresh screen.")
+            previous.retry_authorized = True
+            return False
+        return True
 
-    async def tap_by_coordinates(self, step: Step, node) -> None:
-        left, top, right, bottom = node.bounds
-        await self.send(new_command("tap_at", x=(left + right) // 2, y=(top + bottom) // 2), step)
+    def attempt_command(self, tool: str, args: dict):
+        previous = self.attempts.get(safety.action_key(tool, args, self.view))
+        if tool == "tap" and previous and previous.count and previous.status in {"ok", "failed", "unknown"}:
+            # A coordinate fallback is a second execution, after observation and any duplicate check.
+            node = self.view.by_index[args["target"]].node
+            left, top, right, bottom = node.bounds
+            return new_command("tap_at", x=(left + right) // 2, y=(top + bottom) // 2)
+        return self.command(tool, args)
+
+    def note_attempt(self, step: Step, before) -> None:
+        previous = self.attempts.get(step.action_key, Attempt())
+        progressed = (step.status == "ok" and before.signature != self.view.signature
+                      and screens.overlap_ratio(before, self.view) < 0.9)
+        count = 1 if previous.progressed and not previous.duplicate_sensitive else previous.count + 1
+        self.attempts[step.action_key] = Attempt(count, step.status, step.duplicate_sensitive, progressed)
+
+    async def observe_result(self, before, *, force_image: bool = False) -> bool:
+        for seconds in (1, 2):
+            if self.task.wait_seconds + seconds > MAX_WAIT_SECONDS:
+                break
+            self.task.wait_seconds += seconds
+            if not await self.sleep_interruptibly(seconds):
+                return False
+            await self.read_screen()
+            if before.signature != self.view.signature:
+                if force_image:
+                    break
+                return True
+        await self.capture_screenshot("Checking the action result", force=True)
+        return True
 
     async def focus_and_type(self, step: Step, args: dict) -> bool:
         result = await self.send(self.command("tap", args), step)
@@ -285,6 +373,10 @@ class Brain:
         if field is None:
             step.status, step.change = "failed", "tapped it, but no text box appeared"
             self.warnings.append("Tapping that did not open a text box.")
+            return False
+        if safety.is_secret_field(self.view, field):
+            step.status, step.change = "rejected", "This is a secret field; use request_secret instead."
+            self.warnings.append(step.change)
             return False
         result = await self.send(self.command("type_text", {**args, "target": field}), step)
         if result is not None and result.status == "ok":
@@ -308,11 +400,12 @@ class Brain:
                     f"I couldn't read the screen. {self.last_tried()}".strip())
 
     async def capture_screenshot_if_needed(self) -> None:
-        if self.view.signature in self.screenshotted_screens:
+        if self.view.signature in self.screenshotted_screens and not self.screenshot_requested:
             return
         if self.screenshot_requested or needs_screenshot(self.view):
+            force = self.screenshot_requested
             self.screenshot_requested = False
-            await self.capture_screenshot("Looking at the screen")
+            await self.capture_screenshot("Looking at the screen", force=force)
 
     async def handle_look(self, why: str) -> None:
         before = self.view
@@ -321,16 +414,21 @@ class Brain:
         step.change = "picture attached" if await self.capture_screenshot(why) else "no change: no new picture"
         self.record_step_outcome(step, before)
 
-    async def capture_screenshot(self, why: str) -> bool:
-        if self.view.signature in self.screenshotted_screens:
+    async def capture_screenshot(self, why: str, *, force: bool = False) -> bool:
+        if force:
+            self.screenshot = None
+        if self.secret_screens or any(node.sensitive for node in self.screen.nodes):
+            self.warnings.append("Screenshots are disabled after secret entry for this task; use redacted screen text or ask the user.")
+            return False
+        if self.view.signature in self.screenshotted_screens and not force:
             self.warnings.append("You already have the picture of this screen.")
             return False
         if self.screenshots_taken >= MAX_SCREENSHOTS:
             self.warnings.append("No more pictures for this task; use the screen text.")
             return False
-        self.screenshotted_screens.add(self.view.signature)
         self.screenshots_taken += 1
-        result = await self.send(new_command("screenshot", max_side=1280), None)
+        observation = self.view
+        result = await self.send(new_command("screenshot", max_side=1280, screen_id=self.screen.screen_id), None)
         if result is None:
             return False
         if result.status != "ok" or result.image is None:
@@ -342,13 +440,13 @@ class Brain:
                 self.warnings.append("The picture could not be taken; use the screen text.")
             return False
         started = time.monotonic()
-        marked = annotate_screenshot(result.image, self.view)  # send() already switched to the screen the picture shows
+        marked = annotate_screenshot(result.image, observation)
         log.debug("annotated the screenshot in %d ms", (time.monotonic() - started) * 1000)
         if isinstance(marked, str):
             self.warnings.append(f"The picture was unusable ({marked}); use the screen text.")
             return False
-        self.screenshot = (self.view.signature, marked)
-        self.screenshotted_screens.add(self.view.signature)
+        self.screenshot = (observation.signature, marked)
+        self.screenshotted_screens.add(observation.signature)
         self.notebook.write("screenshot", signature=self.view.signature, bytes=len(marked), why=why)
         return True
 
@@ -368,6 +466,23 @@ class Brain:
 
     async def handle_ask_user(self, args: dict) -> None:
         question = args["question"]
+        if safety.asks_for_secret(question):
+            fields = [line for line in self.view.lines if line.node.editable and safety.is_secret_field(self.view, line.index)]
+            if len(fields) == 1:
+                await self.handle_secret_entry({"target": fields[0].index})
+            else:
+                outcome = await self.ask("secret", "Enter the secret directly on the phone, then reply done.", None, QUESTION_EXPIRES)
+                if outcome is None:
+                    return
+                if outcome.status == "expired":
+                    raise TaskEnded("needs_user", "Secret entry needs your input on the phone.")
+                if outcome.text != "done":
+                    self.warnings.append("The user has not completed manual secret entry.")
+                    return
+                self.secret_screens = True
+                self.screenshot = None
+                await self.read_screen()
+            return
         step = self.start_step("ask_user", None, question, "")
         outcome = await self.ask("question", question, args.get("choices"), QUESTION_EXPIRES)
         if outcome is None:
@@ -382,7 +497,55 @@ class Brain:
         step.status, step.change = "answered", f"user said: {answer}"[:120]
         await self.read_screen()
 
+    async def handle_secret_entry(self, args: dict) -> None:
+        target = args["target"]
+        if not safety.is_secret_field(self.view, target) or not self.view.by_index[target].node.editable:
+            self.warnings.append("request_secret needs a visible editable secret field. Focus the field first.")
+            return
+        before = self.view
+        node = before.by_index[target].node
+        step = self.start_step("request_secret", target, "secret field", "")
+        supported = "spokenSecretsV1" in self.link.capabilities
+        binding = SecretTarget(package_name=before.screen.package_name, screen_id=before.screen.screen_id, target=target)
+        prompt = ("Speak the value for this field, or enter it directly on the phone and say done."
+                  if supported else "Enter the secret directly on the phone, then reply done. Voice entry requires an updated Android client.")
+        outcome = await self.ask("secret", prompt, None, QUESTION_EXPIRES, secret_target=binding if supported else None)
+        if outcome is None:
+            step.status = "cancelled"
+            return
+        if outcome.status == "expired":
+            raise TaskEnded("needs_user", "Secret entry needs your input on the phone.")
+        if outcome.status == "secret" and supported:
+            await self.read_screen()
+            fields = [line for line in self.view.lines if line.node.editable and safety.is_secret_field(self.view, line.index)
+                      and line.node.resource_id == node.resource_id and line.node.class_name == node.class_name
+                      and (node.resource_id or line.node.bounds == node.bounds)]
+            if self.screen.package_name != before.screen.package_name or len(fields) != 1:
+                step.status, step.change = "blocked", "Secret target changed; request a new value for the current field."
+                self.warnings.append(step.change)
+                return
+            self.secret_screens = True
+            self.screenshot = None
+            result = await self.send(new_command("type_text", screen_id=self.screen.screen_id,
+                                                target=fields[0].index, secret_ref=outcome.secret_ref), step)
+            if result is not None:
+                step.change = "User-supplied secret entered" if result.status == "ok" else "Secret entry failed; request a new value or use manual entry."
+        elif outcome.text == "done":
+            step.status, step.change = "ok", "User handled secret entry on the phone"
+            self.secret_screens = True
+            self.screenshot = None
+            await self.read_screen()
+        else:
+            step.status, step.change = "not sent", "Secret was not entered; use manual entry or request a new value."
+            self.warnings.append(step.change)
+        self.task.answers.append(("Secret entry", step.change))
+
     async def handle_confirm_and_tap(self, args: dict, why: str) -> None:
+        if safety.payment_requirement(self.view, args["target"]) is None:
+            await self.handle_phone_action("tap", args, why)
+            return
+        if not await self.allow_attempt("confirm_and_tap", args):
+            return
         before = self.view
         plan = safety.plan_confirm(before, args, self.task.uncertain_actions)
         if isinstance(plan, str):
@@ -391,12 +554,19 @@ class Brain:
             return
         step = self.start_step("confirm_and_tap", args["target"], plan.label, why)
         step.irreversible = True
+        step.duplicate_sensitive = True
+        step.action_key = safety.action_key("confirm_and_tap", args, before)
+        approval_started = time.monotonic()
         outcome = await self.ask("confirm", plan.text, ["Yes", "No"], CONFIRM_EXPIRES)
         if outcome is None:
             step.status = "cancelled"
             return
         if outcome.status == "text" and await self.reply_approves(plan.text, outcome.text):
             outcome = replace(outcome, status="approved")
+        if time.monotonic() - approval_started > CONFIRM_EXPIRES:
+            step.status = "expired"
+            self.warnings.append("Payment approval expired; ask again. Nothing was tapped.")
+            return
         if outcome.status in ("expired", "declined"):
             step.status, step.change = "declined", "the user said no; nothing was tapped"
             self.task.answers.append((f"Approve: {args['summary']}", "No"))
@@ -414,7 +584,7 @@ class Brain:
             step.status, step.change = "blocked", target
             self.warnings.append(target)
             return
-        command = self.command("tap", {"target": target})
+        command = self.attempt_command("tap", {"target": target})
         command.confirmed = True
         result = await self.send(command, step, confirmed=True)
         if result is None:
@@ -424,12 +594,18 @@ class Brain:
             self.task.completed_irreversible.append(f'approved and tapped "{plan.label}"' + (f", total {total}" if total else ""))
         elif result.status == "unknown":
             self.task.uncertain_actions.append(f'tapped "{plan.label}" but the result was lost')
+        if result.status != "rejected":
+            await self.observe_result(before)
+        self.note_attempt(step, before)
         self.record_step_outcome(step, before)
 
     async def reply_approves(self, question: str, reply: str) -> bool:
         """Lets the AI judge a free-form reply like "Yes, send it"; any doubt or error means not approved."""
         started = time.monotonic()
         approved = False
+        if self.task.model_calls >= self.model_call_limit:
+            return False
+        self.task.model_calls += 1
         try:
             approved = await self.link.run_interruptible(self.ai.approves(question, reply))
         except PhoneDisconnected:
@@ -490,11 +666,32 @@ class Brain:
             args, self.view, goal=self.task.goal, corrections=self.task.corrections, typed=self.task.typed_texts,
             app_label=self.link.apps.get(self.screen.package_name, ""), committed_steps=committed)
         if problem is None:
+            self.task.completion_evidence = "screen"
             raise TaskEnded("completed", args["summary"], args["proof"])
+        observation_changed = self.verification_signature != self.view.signature
         self.task.rejected_finishes += 1
-        if self.task.rejected_finishes >= 2:
-            raise TaskEnded("unconfirmed", "Could not confirm: " + args["summary"])
-        self.warnings.append(problem)
+        if self.task.rejected_finishes == 1 or observation_changed:
+            if not await self.observe_result(self.view, force_image=True):
+                self.task.rejected_finishes -= 1
+                return
+            self.verification_signature = self.view.signature
+            self.warnings.append(problem)
+            self.warnings.append("Completion is not established. Inspect the fresh observation/image and check relevant result evidence without repeating the action. Try finish again or ask for help.")
+            return
+        answer = await self.ask("question", f'I checked the screen but could not verify this task: {self.task.goal}. Did it finish?',
+                                ["Yes", "No", "Not sure"], QUESTION_EXPIRES)
+        if answer is None:
+            return
+        confirmed = yes_no(answer.text)
+        if confirmed is True:
+            self.task.completion_evidence = "user"
+            raise TaskEnded("completed", "User confirmed: " + args["summary"])
+        if confirmed is False:
+            self.task.rejected_finishes = 0
+            self.task.corrections.append("The user says the task is not complete. Check the result and recover; do not blindly repeat an effect.")
+            await self.read_screen()
+            return
+        raise TaskEnded("unconfirmed", "The result could not be verified, and the user did not confirm completion.")
 
     # ---------- talking to the phone ----------
 
@@ -514,7 +711,7 @@ class Brain:
         n = step.n if step else None
         self.notebook.write("step_sending", n=n, command_id=command.command_id, action=command.action,
                             target=command.target, label=step.label if step else "", why=step.why if step else "",
-                            confirmed=confirmed)
+                            confirmed=confirmed or bool(command.confirmed))
         started = time.monotonic()
         try:
             result = await self.link.run(command)
@@ -540,11 +737,15 @@ class Brain:
                             ms=round(elapsed * 1000))
         if step:
             step.status = result.status
+            if step.duplicate_sensitive and result.status in {"ok", "failed", "unknown"}:
+                note = f'"{step.label}" may already have happened; inspect before retrying'
+                if note not in self.task.uncertain_actions:
+                    self.task.uncertain_actions.append(note)
             if result.status != "ok":
                 step.error = describe_error(error, result.error.message if result.error else "")
         if result.screen is not None:
             self.set_screen(result.screen)
-        elif result.status != "ok" or command.action != "read_screen":
+        elif command.action not in {"read_screen", "screenshot"}:
             await self.read_screen()
         if result.status == "unknown" and step and not step.irreversible:
             self.warnings.append(f'The phone did not confirm "{step.label}". Check the screen before repeating it.')
@@ -556,22 +757,22 @@ class Brain:
             result = await self.send(new_command("read_screen"), None)
             if result is not None and result.screen is not None:
                 return
-        if self.screen is None:
-            raise TaskEnded("failed", "The phone did not send its screen.")
+        raise TaskEnded(self.failure_outcome(), "The phone did not send a fresh screen.")
 
     def set_screen(self, screen) -> None:
         started = time.monotonic()
+        screen = safety.redact_screen(screen)
         self.screen = screen
         self.view = screens.render(screen, self.link.apps)
         self.task.record_screen(self.view.app)
         log.debug("rendered %d nodes into %d lines in %d ms", len(screen.nodes), len(self.view.lines),
                   (time.monotonic() - started) * 1000)
 
-    async def ask(self, kind: str, text: str, choices, expires_in: int):
+    async def ask(self, kind: str, text: str, choices, expires_in: int, *, secret_target=None):
         self.notebook.write("ask", kind=kind, text=text)
         started = time.monotonic()
         try:
-            outcome = await self.link.ask(kind, text, choices, expires_in)
+            outcome = await self.link.ask(kind, text, choices, expires_in, secret_target=secret_target)
         finally:
             self.timing.user += time.monotonic() - started
         if outcome.status == "cancelled":
@@ -691,11 +892,10 @@ class Brain:
         elif not step.change:
             step.change = step.error or step.status
         if step.change.startswith("no change") and step.tool != "wait":
-            self.no_effect_actions.add((step.tool, step.label, before.signature))
             if step.tool == "scroll":
                 self.warnings.append("That list is at its end.")
             else:
-                self.warnings.append("Your last action changed nothing; do not repeat it.")
+                self.warnings.append("No visible change. Delayed observation/recovery applies before a bounded retry.")
         self.consecutive_scrolls = self.consecutive_scrolls + 1 if step.tool == "scroll" and before.signature != after.signature else 0
         if self.consecutive_scrolls >= 5:
             self.warnings.append("Lots of scrolling. Try the search box.")
@@ -709,17 +909,6 @@ class Brain:
             self.warnings.append(f"You are going back and forth in {apps}. Try a different way.")
             self.screenshot_requested = True
         log.info("step %d: %s %s → %s", step.n, step.tool, step.label, step.change)
-
-    def find_shifted_target(self, before, label: str) -> int | None:
-        after = self.view
-        if not label:
-            return None
-        old = {(line.role, line.label) for line in before.lines}
-        new = {(line.role, line.label) for line in after.lines}
-        if not old or len(old & new) / len(old) < 0.9:
-            return None
-        matches = [line for line in after.lines if line.label == label]
-        return matches[0].index if len(matches) == 1 else None
 
     def find_text_field(self) -> int | None:
         fields = [line for line in self.view.lines if line.node.editable]

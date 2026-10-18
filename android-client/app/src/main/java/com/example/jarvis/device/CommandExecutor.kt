@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.Bundle
 import android.os.SystemClock
+import android.text.InputType
 import android.util.Base64
 import android.view.Display
 import android.view.accessibility.AccessibilityNodeInfo
@@ -22,7 +23,8 @@ class CommandExecutor(
     private val beforeScreenshot: suspend () -> Unit = {},
     private val afterScreenshot: () -> Unit = {},
 ) {
-    private val screenReader = ScreenReader(service)
+    private val secrets = SecretVault()
+    private val screenReader = ScreenReader(service, secrets)
     private val gestures = Gestures(service)
     private val appLauncher = AppLauncher(service)
 
@@ -33,6 +35,10 @@ class CommandExecutor(
         }
         "listApps" -> JSONObject().put("apps", JSONArray(appLauncher.listApps().map(::describeApp)))
         "screenshot" -> {
+            if (secrets.hasSensitiveData() || screenReader.hasSensitiveFields()) {
+                throw CommandException("secureWindow", "Screenshots are disabled while secret content may be visible")
+            }
+            if (args.has("screenId")) screenReader.requireSnapshot(args.getString("screenId"))
             try {
                 beforeScreenshot()
                 screenshot(args.optInt("maxWidth", DEFAULT_SCREENSHOT_WIDTH))
@@ -70,14 +76,15 @@ class CommandExecutor(
         val target = ancestorsAndSelf(node).firstOrNull { it.isClickable }
         requireConfirmation(args, listOfNotNull(node.label(), target?.label()))
         if (target?.performAction(AccessibilityNodeInfo.ACTION_CLICK) != true) {
-            val bounds = Rect().also { node.getBoundsInScreen(it) }
-            gestures.tap(bounds.centerX(), bounds.centerY())
+            throw CommandException("actionFailed", "Click was not acknowledged; check the result before retrying")
         }
         return JSONObject()
     }
 
     private fun longClick(args: JSONObject): JSONObject {
-        val target = ancestorsAndSelf(nodeFrom(args)).firstOrNull { it.isLongClickable }
+        val node = nodeFrom(args)
+        val target = ancestorsAndSelf(node).firstOrNull { it.isLongClickable }
+        requireConfirmation(args, listOfNotNull(node.label(), target?.label()))
         if (target?.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK) != true) {
             throw CommandException("actionFailed", "long click was not accepted")
         }
@@ -95,9 +102,18 @@ class CommandExecutor(
     private fun setText(args: JSONObject): JSONObject {
         val node = nodeFrom(args)
         val submit = args.optBoolean("submit", false)
+        if (!node.refresh()) throw CommandException("staleScreen", "The text field changed; read the screen again")
+        val value = if (args.has("secretRef")) {
+            if (submit) throw CommandException("badCommand", "Secret entry cannot submit the field")
+            secrets.consume(args.getString("secretRef"), screenReader.packageName(), screenReader.fieldKey(node))
+                ?: throw CommandException("badCommand", "Secret reference is expired, used, or does not match this field")
+        } else {
+            if (screenReader.isSensitive(node)) throw CommandException("badCommand", "This field needs user-supplied secret entry")
+            args.optString("text")
+        }
         if (submit) node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
         val text = Bundle().apply {
-            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, args.optString("text"))
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value)
         }
         if (!node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, text)) {
             throw CommandException("actionFailed", "the field rejected the text")
@@ -130,6 +146,11 @@ class CommandExecutor(
     }
 
     private suspend fun swipe(args: JSONObject): JSONObject {
+        val context = screenReader.contextLabels()
+        if (Regex("\\b(slide|swipe) to\\b", RegexOption.IGNORE_CASE).containsMatchIn(context)
+            && ConfirmationGuard.needsConfirmation(context)) {
+            throw CommandException("needsConfirmation", "Complete payment sliders directly on the phone")
+        }
         gestures.swipe(
             args.getInt("x1"), args.getInt("y1"), args.getInt("x2"), args.getInt("y2"),
             args.optLong("durationMs", DEFAULT_SWIPE_MS),
@@ -191,11 +212,28 @@ class CommandExecutor(
     private fun ancestorsAndSelf(node: AccessibilityNodeInfo) = generateSequence(node) { it.parent }
 
     private fun requireConfirmation(args: JSONObject, labels: List<String>) {
-        val sensitive = labels.firstOrNull { ConfirmationGuard.needsConfirmation(it) } ?: return
+        val sensitive = labels.firstOrNull { ConfirmationGuard.needsConfirmation(it, screenReader.contextLabels()) } ?: return
         if (!args.optBoolean("confirmed")) {
             throw CommandException("needsConfirmation", "'$sensitive' needs the user's approval, then retry with confirmed=true")
         }
     }
+
+    fun prepareSecret(questionId: String, target: JSONObject?) {
+        secrets.cancelPending()
+        if (target == null) return
+        val node = screenReader.nodeFor(target.getString("screen_id"), target.getInt("target"))
+        if (!node.refresh() || !node.isEditable || !screenReader.isSensitive(node) || screenReader.packageName() != target.getString("package_name")) {
+            throw CommandException("badCommand", "Secret question does not match the current field")
+        }
+        val numeric = (node.inputType and InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_NUMBER ||
+            Regex("\\bpin\\b|otp|one.?time|\\bcode\\b|cvv|cvc|card.?number", RegexOption.IGNORE_CASE)
+                .containsMatchIn(listOf(node.viewIdResourceName, node.hintText, node.contentDescription).joinToString(" "))
+        secrets.prepare(questionId, screenReader.packageName(), screenReader.fieldKey(node), numeric)
+    }
+
+    fun storeSecret(questionId: String, value: String): String? = secrets.store(questionId, value)
+    fun cancelPendingSecrets() = secrets.cancelPending()
+    fun clearSecrets() = secrets.clear()
 
     private fun describeApp(app: InstalledApp) = JSONObject().put("label", app.label).put("package", app.packageName)
 
