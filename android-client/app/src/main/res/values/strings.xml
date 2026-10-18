@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">jarvis</string>
+    <string name="accessibility_service_description">Lets Jarvis read and capture the screen.</string>
+</resources>
