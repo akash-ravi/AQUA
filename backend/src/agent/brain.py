@@ -89,6 +89,7 @@ class Brain:
         self.screenshots_taken = 0
         self.screenshot_requested = False
         self.unreadable_screens: set[str] = set()
+        self.blind_screens: set[str] = set()
         self.step_limit = MAX_STEPS
         self.model_call_limit = MAX_MODEL_CALLS
         self.help_asks = 0
@@ -443,7 +444,9 @@ class Brain:
         return result is not None
 
     async def wait_for_readable_screen(self) -> None:
-        for _ in range(EMPTY_SCREEN_REREADS):
+        # A screen that stayed empty once is a blind app, not a loading one; rereading it every turn only adds 3 s.
+        rereads = 0 if self.view.signature in self.blind_screens else EMPTY_SCREEN_REREADS
+        for _ in range(rereads):
             if self.view.by_index:
                 return
             if not await self.sleep_interruptibly(EMPTY_SCREEN_WAIT_SECONDS):
@@ -451,6 +454,7 @@ class Brain:
             await self.read_screen()
         if self.view.by_index:
             return
+        self.blind_screens.add(self.view.signature)
         if self.screenshots_taken < MAX_SCREENSHOTS and not self.secret_screens:
             self.warnings.append("The screen text shows nothing here. Use the picture with tap_point and type_focused.")
             return

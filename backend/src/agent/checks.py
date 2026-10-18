@@ -2,6 +2,7 @@ import difflib
 import re
 
 from src.agent import screen as screens
+from src.agent.screenshots import is_blind
 
 TARGETED = {"tap", "type_text", "confirm_and_tap", "request_secret"}
 
@@ -92,12 +93,14 @@ def check_finish(args: dict, view, *, goal: str, corrections: list[str], typed: 
         return "finish needs 1 to 3 short phrases copied exactly from the current screen"
     shown = [screens.normalize(text) for text in screens.proof_texts(view)]
     own_words = [screens.normalize(text) for text in [goal, *corrections, *typed] if text]
+    # A blind screen (Lyft) has no text to match, so proof can only come from the picture.
+    from_picture = is_blind(view)
     new_info = False
     for phrase in proof:
         wanted = screens.normalize(phrase)
         if not 4 <= len(wanted) <= 120:
             return f'"{phrase}" is too short or too long to count as proof'
-        if not any(wanted in text or _word_overlap(wanted, text) >= 0.85 for text in shown):
+        if not from_picture and not any(wanted in text or _word_overlap(wanted, text) >= 0.85 for text in shown):
             return _proof_not_found(phrase, view)
         if wanted != screens.normalize(app_label) and not any(wanted in words for words in own_words):
             new_info = True
