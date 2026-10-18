@@ -1,7 +1,5 @@
 import asyncio
 import logging
-import time
-from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
@@ -19,8 +17,6 @@ from src.phone.messages import Done, new_id
 log = logging.getLogger("jarvis.server")
 
 START_SECONDS = 10.0
-FOLLOW_UP_SECONDS = 1800
-MAX_HISTORY = 20
 
 
 def create_app(settings: Settings, ai: AI) -> FastAPI:
@@ -52,9 +48,6 @@ def create_app(settings: Settings, ai: AI) -> FastAPI:
             raise HTTPException(502, "ElevenLabs refused the token request")
         return {"token": token, "voice_id": settings.voice_id} if kind == "speak" else {"token": token}
 
-    # shortcut: in memory and keyed by phone IP, so a restart or a new IP forgets follow-up context.
-    histories: defaultdict[str, deque[tuple[float, str]]] = defaultdict(lambda: deque(maxlen=MAX_HISTORY))
-
     @app.websocket("/agent")
     async def agent(websocket: WebSocket) -> None:
         # Browsers always send Origin; the phone app never does, so this keeps web pages out.
@@ -66,7 +59,7 @@ def create_app(settings: Settings, ai: AI) -> FastAPI:
         link = PhoneLink(websocket)
         device_id = websocket.client.host if websocket.client else ""
         try:
-            await handle_phone(link, settings, ai, device_id, histories[device_id])
+            await handle_phone(link, settings, ai, device_id)
         except PhoneDisconnected:
             log.info("The phone disconnected.")
         finally:
@@ -75,8 +68,7 @@ def create_app(settings: Settings, ai: AI) -> FastAPI:
     return app
 
 
-async def handle_phone(link: PhoneLink, settings: Settings, ai: AI, device_id: str,
-                       history: deque[tuple[float, str]]) -> None:
+async def handle_phone(link: PhoneLink, settings: Settings, ai: AI, device_id: str) -> None:
     start = await wait_for_start(link)
     if start is None:
         return
@@ -85,7 +77,7 @@ async def handle_phone(link: PhoneLink, settings: Settings, ai: AI, device_id: s
     try:
         link.start(start)
         parts, _ = await asyncio.gather(ai.split_tasks(start.task), link.load_apps())
-        await run_chain(parts, link, settings, ai, device_id, history)
+        await run_chain(parts, link, settings, ai, device_id)
     except PhoneDisconnected:
         log.info("The phone disconnected.")
     except Exception:
@@ -93,14 +85,12 @@ async def handle_phone(link: PhoneLink, settings: Settings, ai: AI, device_id: s
         await link.fail("Something went wrong on the Mac.")
 
 
-async def run_chain(parts: list[str], link: PhoneLink, settings: Settings, ai: AI, device_id: str,
-                    history: deque[tuple[float, str]]) -> None:
+async def run_chain(parts: list[str], link: PhoneLink, settings: Settings, ai: AI, device_id: str) -> None:
     """Runs each part in order and stops the chain at the first part that doesn't complete."""
     summaries = []
+    history = []
     for n, goal in enumerate(parts):
-        while history and time.monotonic() - history[0][0] > FOLLOW_UP_SECONDS:
-            history.popleft()
-        task = Task(goal=goal, id=new_id("t"), earlier=[line for _, line in history])
+        task = Task(goal=goal, id=new_id("t"), earlier=list(history))
         log.info("Task %s (%d of %d): %s", task.id, n + 1, len(parts), goal)
         notebook = Notebook(settings.data_dir, task.id)
         notebook.write("task", task_id=task.id, goal=goal, chain=parts, device_id=device_id, ai=ai.name)
@@ -111,7 +101,7 @@ async def run_chain(parts: list[str], link: PhoneLink, settings: Settings, ai: A
             return
         said = "; ".join(f"{question} → {answer}" for question, answer in task.answers)
         if end.summary:  # an empty summary means the mic only heard noise
-            history.append((time.monotonic(), f"{goal}{f' (user said: {said})' if said else ''} → {end.outcome}: {end.summary}"))
+            history.append(f"{goal}{f' (user said: {said})' if said else ''} → {end.outcome}: {end.summary}")
         summaries.append(end.summary)
         if end.outcome != "completed":
             break
