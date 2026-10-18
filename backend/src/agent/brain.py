@@ -768,7 +768,8 @@ class Brain:
             return
         # The summary, not the goal: the user may have redirected the task mid-way.
         question = f"I couldn't confirm it on screen. {args['summary'].strip().rstrip('.')}. Did that work?"
-        answer = await self.ask("question", question, ["Yes", "No", "Not sure"], QUESTION_EXPIRES)
+        # Here a thank-you means yes; handled below.
+        answer = await self.ask("question", question, ["Yes", "No", "Not sure"], QUESTION_EXPIRES, end_on_thanks=False)
         if answer is None:
             return
         started = time.monotonic()
@@ -776,6 +777,8 @@ class Brain:
         self.timing.ai += time.monotonic() - started
         if confirmed is None:
             confirmed = yes_no(answer.text)
+        if confirmed is None and answer.status == "text" and answer.text:
+            confirmed = await self.ai.speech_kind(answer.text) == "thanks" or None
         self.notebook.write("completion_check", reply=answer.text, done=confirmed)
         if confirmed is True:
             self.task.completion_evidence = "user"
@@ -884,7 +887,8 @@ class Brain:
         log.debug("rendered %d nodes into %d lines in %d ms", len(screen.nodes), len(self.view.lines),
                   (time.monotonic() - started) * 1000)
 
-    async def ask(self, kind: str, text: str, choices, expires_in: int, *, secret_target=None, while_paused: bool = False):
+    async def ask(self, kind: str, text: str, choices, expires_in: int, *, secret_target=None, while_paused: bool = False,
+                  end_on_thanks: bool = True):
         self.notebook.write("ask", kind=kind, text=text)
         started = time.monotonic()
         try:
@@ -896,6 +900,12 @@ class Brain:
             return None
         shown = safety.hide_secrets(outcome.text, text) if outcome.text else None
         self.notebook.write("answer", ask_id=outcome.ask_id, status=outcome.status, text=shown)
+        if end_on_thanks and kind != "secret" and outcome.status == "text" and outcome.text:
+            started = time.monotonic()
+            thanked = await self.ai.speech_kind(outcome.text) == "thanks"
+            self.timing.ai += time.monotonic() - started
+            if thanked:
+                raise TaskEnded("stopped", "You're welcome!")
         return outcome
 
     async def wait_if_paused(self) -> bool:
@@ -920,7 +930,8 @@ class Brain:
 
     async def take_request_while_paused(self) -> None:
         """Pausing asks what else the user wants; Jev reads the reply as resume, stop or a change to the task."""
-        answer = await self.ask("question", PAUSE_QUESTION, None, PAUSE_ANSWER_SECONDS, while_paused=True)
+        answer = await self.ask("question", PAUSE_QUESTION, None, PAUSE_ANSWER_SECONDS, while_paused=True,
+                                end_on_thanks=False)
         if answer and answer.status == "expired":
             raise TaskEnded("stopped", "No worries, I'll stop here.")
         reply = (answer.text or "").strip() if answer and answer.status == "text" else ""

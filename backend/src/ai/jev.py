@@ -8,7 +8,8 @@ URL = "https://api.typesafe.ai/v1/systemone"
 MODEL = "jev-latest"
 TIMEOUT_SECONDS = 5
 APPROVE_AT = 0.9
-SPEECH_SURE_AT = 0.85  # typed text arrives here too, so only a clear thanks/noise counts
+# Noise drops input silently, so it needs to be clear; a wrong thanks only closes the orb.
+SPEECH_SURE_AT = {"thanks": 0.6, "noise": 0.85}
 
 APPROVAL_QUESTION = {
     "type": "choice",
@@ -88,7 +89,8 @@ class Jev:
         if not answer:
             return "talking"
         choice = answer.get("choice")
-        return choice if (answer.get("probabilities") or {}).get(choice, 0) >= SPEECH_SURE_AT else "talking"
+        sure = (answer.get("probabilities") or {}).get(choice, 0) >= SPEECH_SURE_AT.get(choice, 0)
+        return choice if choice in ("thanks", "noise") and sure else "talking"
 
     async def phone_task_likelihood(self, goal: str) -> float:
         answer = await self._ask(goal, "phone_task", PHONE_TASK_QUESTION)
