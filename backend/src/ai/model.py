@@ -1,0 +1,168 @@
+import base64
+import logging
+import time
+from dataclasses import dataclass
+
+import anthropic
+
+from src.config import Settings
+from src.ai.tools import TOOLS, tool_schemas
+
+log = logging.getLogger("jarvis.llm")
+
+
+@dataclass
+class Decision:
+    tool: str
+    args: dict
+    text: str = ""
+    model: str = ""
+    ms: int = 0
+    input_tokens: int = 0
+    cached_tokens: int = 0
+    output_tokens: int = 0
+
+
+class AIError(Exception):
+    """A problem retrying won't fix (bad key, unknown model, no credits)."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
+class RateLimited(AIError):
+    def __init__(self, message: str, retry_after: float | None = None):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+class AIUnavailable(AIError):
+    pass
+
+
+class InvalidReply(AIError):
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
+class AI:
+    def __init__(self, settings: Settings):
+        key = settings.anthropic_api_key
+        self.model = settings.model
+        self.effort = settings.effort
+        self.name = self.model
+        self.tools = tool_schemas()
+        self.client = anthropic.AsyncAnthropic(api_key=key.get_secret_value() if key else None, max_retries=0,
+                                               timeout=120)
+
+    async def decide(self, system: str, message: str, *, image: bytes | None = None,
+                     retry_note: str | None = None) -> Decision:
+        blocks: list[dict] = []
+        if image:
+            blocks.append({"type": "image", "source": {
+                "type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(image).decode()}})
+        blocks.append({"type": "text", "text": f"{message}\n{retry_note}" if retry_note else message})
+        started = time.monotonic()
+        try:
+            response = await self.client.beta.messages.create(
+                model=self.model,
+                max_tokens=16000,
+                system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+                messages=[{"role": "user", "content": blocks}],
+                tools=self.tools,
+                # forced tool_choice returns 400 on Opus 5.5
+                tool_choice={"type": "auto", "disable_parallel_tool_use": True},
+                output_config={"effort": self.effort},
+                betas=["server-side-fallback-2026-07-01"],
+                fallbacks="default",
+            )
+        except anthropic.APIError as error:
+            raise _to_ai_error(error)
+        ms = int((time.monotonic() - started) * 1000)
+
+        usage = response.usage
+        cached = usage.cache_read_input_tokens or 0
+        input_tokens = usage.input_tokens + (usage.cache_creation_input_tokens or 0) + cached
+        log.debug("%s answered in %d ms: %d input tokens (%d cached), %d output tokens%s", response.model, ms,
+                  input_tokens, cached, usage.output_tokens, ", with a picture" if image else "")
+        if response.model != self.model:
+            log.info("Answered by fallback model %s", response.model)
+        if response.stop_reason == "refusal":
+            raise InvalidReply("the model declined this request")
+        text = "".join(block.text for block in response.content if block.type == "text")
+        call = next((block for block in response.content if block.type == "tool_use"), None)
+        if call is None:
+            raise InvalidReply("the reply was cut off" if response.stop_reason == "max_tokens" else "no action in the reply")
+        tool, args = normalize_tool_call(call.name, call.input)
+        return Decision(tool=tool, args=args, text=text, model=response.model, ms=ms, input_tokens=input_tokens,
+                        cached_tokens=cached, output_tokens=usage.output_tokens)
+
+
+def normalize_tool_call(tool: str, args: dict) -> tuple[str, dict]:
+    """Strict tool use guarantees names and types; this drops empty values and fills in a missing "why"."""
+    spec = next((t for t in TOOLS if t.name == tool), None)
+    if spec is None:
+        raise InvalidReply(f"unknown action '{tool}'")
+    cleaned: dict = {}
+    for param in spec.params:
+        value = args.get(param.name)
+        if isinstance(value, str):
+            value = value.strip()
+        elif isinstance(value, list):
+            value = [item.strip() for item in value if item.strip()]
+        if value is None or value == "" or value == []:
+            if param.required and param.name != "why":
+                raise InvalidReply(f"{tool} needs {param.name}")
+            continue
+        cleaned[param.name] = value
+    if tool == "wait":
+        cleaned["seconds"] = min(10, max(1, cleaned.get("seconds", 3)))
+    if any(p.name == "why" for p in spec.params) and "why" not in cleaned:
+        cleaned["why"] = _default_why(tool, cleaned)
+    return tool, cleaned
+
+
+def _default_why(tool: str, args: dict) -> str:
+    label = args.get("target_text") or (f"[{args['target']}]" if "target" in args else "")
+    return {
+        "tap": f"Tapping '{label}'",
+        "confirm_and_tap": f"Asking before tapping '{label}'",
+        "type_text": f"Typing '{args.get('text', '')}'",
+        "scroll": f"Scrolling {args.get('direction', 'down')}",
+        "go_back": "Going back",
+        "go_home": "Going to the home screen",
+        "open_app": f"Opening {args.get('name', 'the app')}",
+        "wait": "Waiting for the screen",
+        "look": "Looking at the screen",
+    }.get(tool, tool)
+
+
+def _to_ai_error(error: anthropic.APIError) -> AIError:
+    if isinstance(error, (anthropic.AuthenticationError, anthropic.PermissionDeniedError)):
+        return AIError("The AI key was refused. Check ANTHROPIC_API_KEY.")
+    if isinstance(error, anthropic.NotFoundError):
+        return AIError("No such model. Check JARVIS_MODEL.")
+    if isinstance(error, anthropic.RateLimitError):
+        return RateLimited("The AI is busy (rate limited).", _retry_after(error))
+    if isinstance(error, anthropic.BadRequestError):
+        if "credit balance" in error.message.lower():
+            return AIError("The AI account is out of credits.")
+        return AIError(f"The AI refused the request: {error.message[:300]}")
+    if isinstance(error, anthropic.APIStatusError):
+        if error.status_code >= 500:
+            return AIUnavailable(f"The AI is having trouble (HTTP {error.status_code}).")
+        return AIError(f"The AI refused the request: {error.message[:300]}")
+    if isinstance(error, anthropic.APITimeoutError):
+        return AIUnavailable("The AI did not answer in time.")
+    if isinstance(error, anthropic.APIConnectionError):
+        return AIUnavailable("Could not reach the AI.")
+    return AIUnavailable(f"The AI failed: {error.message[:200]}")
+
+
+def _retry_after(error: anthropic.APIStatusError) -> float | None:
+    try:
+        return float(error.response.headers.get("retry-after"))
+    except (TypeError, ValueError):
+        return None

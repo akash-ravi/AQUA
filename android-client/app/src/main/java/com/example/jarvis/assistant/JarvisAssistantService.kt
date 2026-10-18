@@ -8,7 +8,7 @@ import android.service.voice.VoiceInteractionSession
 import android.service.voice.VoiceInteractionSessionService
 import com.example.jarvis.AssistantActivity
 
-/** Registered with Android as a digital assistant; input remains text-only. */
+/** Registered with Android as a digital assistant; the overlay it opens listens for speech. */
 class JarvisAssistantService : VoiceInteractionService()
 
 class JarvisAssistantSessionService : VoiceInteractionSessionService() {
